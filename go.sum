@@ -1,0 +1,6 @@
+github.com/BurntSushi/toml v1.2.1 h1:9F2/+DoOYIOksmaJFPw1tGFy1eDnIJXg+UHjuD8lTak=
+github.com/BurntSushi/toml v1.2.1/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbicEuybxQ=
+github.com/SSSOC-CAN/laniakea v1.0.0 h1:U0+lcat88kKewFa1qIh/PsBMhvlkX1FIR9O72Y/EQGU=
+github.com/SSSOC-CAN/laniakea v1.0.0/go.mod h1:BAR5OUnE6O6BGij6bLJ3OOUiwB6FlYc+vZaX0G4V4MI=
+github.com/SSSOCPaulCote/blunderguard v0.0.0-20220611160827-401cd5c1610a h1:lloMlsBR6U0EIx/KuVkwsP6/I3Ci6M4jiKjZAKOQTks=
+github.com/SSSOCPaulCote/blunderguard v0.0.0-20220611160827-401cd5c1610a/go.mod h1:QmPQSk28XTjXldnFMmKGnYtux+oAI7n4h+VmXqi6Edg=

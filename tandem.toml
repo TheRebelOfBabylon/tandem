@@ -1,0 +1,12 @@
+[relay]
+url="wss://example.com"
+name="an example relay"
+description="description of example relay"
+pubkey="123abcdefg456"
+contact="mailto:alice@example.com"
+
+[logging]
+log_level="DEBUG"
+
+[auth]
+whitelist=["789hijklmn0123"]
