@@ -14,20 +14,20 @@ import (
 func main() {
 	configDir := flag.String("config", utils.AppDataDir("tandem", false), "Directory of the toml config file")
 	verFlag := flag.Bool("version", false, "Display current tandem version")
-	logConsoleOutFlag := flag.Bool("consoleoutput", true, "Print logs to the console")
 	flag.Parse()
 	if *verFlag {
 		fmt.Fprintf(os.Stdout, "tandem version %s\n", u.AppVersion)
 		os.Exit(0)
 	}
-	_, err := config.InitConfig(*configDir)
+	cfg, err := config.InitConfig(*configDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not initialize configuration: %v\n", err)
 		os.Exit(1)
 	}
-	_, err = logger.InitLogger(*logConsoleOutFlag)
+	log, err := logger.InitLogger(cfg.Logging.ConsoleOutput, cfg.Logging.LogFileDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not initialize logger: %v\n", err)
 		os.Exit(1)
 	}
+	log.Info().Msgf("Testing %v", 13)
 }

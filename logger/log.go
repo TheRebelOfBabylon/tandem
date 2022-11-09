@@ -1,10 +1,81 @@
 package logger
 
 import (
+	"fmt"
+	"os"
+	"path"
+	"runtime"
+	"strings"
+
+	"github.com/SSSOC-CAN/laniakea/utils"
+	"github.com/mattn/go-colorable"
+	color "github.com/mgutz/ansi"
 	"github.com/rs/zerolog"
 )
 
-func InitLogger(consoleOutput bool) (zerolog.Logger, error) {
+const (
+	logFileName = "tandem.log"
+)
+
+func InitLogger(consoleOutput bool, logFileDir string) (zerolog.Logger, error) {
 	// open log file
+	var (
+		log_file *os.File
+		logger   zerolog.Logger
+		err      error
+	)
+	log_file, err = os.OpenFile(path.Join(logFileDir, logFileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		// try to create AppData/Tandem | Application Support/Tandem or ~/.tandem file if logFileDir is pointing there
+		if utils.AppDataDir("tandem", false) == logFileDir {
+			err = os.Mkdir(utils.AppDataDir("tandem", false), 0755)
+			if err != nil {
+				return logger, err
+			}
+			log_file, err = os.OpenFile(path.Join(logFileDir, logFileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				return logger, err
+			}
+		} else {
+			return logger, err
+		}
+	}
 	// add console output if option is chosen
+	if consoleOutput {
+		output := zerolog.NewConsoleWriter()
+		if runtime.GOOS == "windows" {
+			output.Out = colorable.NewColorableStdout()
+		} else {
+			output.Out = os.Stderr
+		}
+		output.FormatLevel = func(i interface{}) string {
+			var msg string
+			switch v := i.(type) {
+			default:
+				x := fmt.Sprintf("%v", v)
+				switch x {
+				case "info":
+					msg = color.Color(strings.ToUpper("["+x+"]"), "green")
+				case "panic":
+					msg = color.Color(strings.ToUpper("["+x+"]"), "red")
+				case "fatal":
+					msg = color.Color(strings.ToUpper("["+x+"]"), "red")
+				case "error":
+					msg = color.Color(strings.ToUpper("["+x+"]"), "red")
+				case "warn":
+					msg = color.Color(strings.ToUpper("["+x+"]"), "yellow")
+				case "debug":
+					msg = color.Color(strings.ToUpper("["+x+"]"), "yellow")
+				case "trace":
+					msg = color.Color(strings.ToUpper("["+x+"]"), "magenta")
+				}
+			}
+			return msg + fmt.Sprintf("\t")
+		}
+		multi := zerolog.MultiLevelWriter(output, log_file)
+		logger = zerolog.New(multi).With().Timestamp().Logger()
+	} else {
+		logger = zerolog.New(log_file).With().Timestamp().Logger()
+	}
+	return logger, nil
 }

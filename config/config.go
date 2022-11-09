@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"math"
 	"path"
 
@@ -22,7 +23,9 @@ type Info struct {
 }
 
 type Logging struct {
-	LogLevel string `toml:"log_level"` // (INFO|DEBUG|TRACE|ERROR)
+	LogLevel      string `toml:"log_level"`         // (INFO|DEBUG|TRACE|ERROR)
+	ConsoleOutput bool   `toml:"console_output"`    // Print logs to console
+	LogFileDir    string `toml:"log_file_location"` // location of the log files. Default is AppData/Tandem | Application Support/Tandem or ~/.tandem
 }
 
 type Data struct {
@@ -62,13 +65,15 @@ var (
 	default_ping_interval      uint16 = 300
 	default_data_dir                  = utils.AppDataDir("tandem", false)
 	default_log_level                 = "ERROR"
+	default_log_dir                   = default_data_dir
+	default_console_out               = true
 	default_msg_per_sec        uint32 = 50000
 	default_max_event_size     uint32 = math.MaxUint32
 	default_max_ws_msg_size    uint32 = math.MaxUint32
 	default_reject_future_secs uint64 = 1800
 	default_config                    = func() Config {
 		return Config{
-			Logging:  Logging{LogLevel: default_log_level},
+			Logging:  Logging{LogLevel: default_log_level, LogFileDir: default_log_dir, ConsoleOutput: default_console_out},
 			Database: Data{DataDir: default_data_dir},
 			Network:  Network{BindAddress: default_bind_address, Port: default_port, PingInterval: default_ping_interval},
 			Limits:   Limits{MsgPerSec: default_msg_per_sec, MaxEventSize: default_max_event_size, MaxWSMsgSize: default_max_ws_msg_size, RejectFutureSecs: default_reject_future_secs},
@@ -85,6 +90,8 @@ func InitConfig(cfgDir string) (*Config, error) {
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		fmt.Println("Using default configuration...")
 	}
 	return &config, nil
 }

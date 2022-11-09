@@ -7,6 +7,8 @@ contact="mailto:alice@example.com"
 
 [logging]
 log_level="DEBUG"
+console_output=false
+log_file_location="/Users/paulcote/Downloads"
 
 [auth]
 whitelist=["789hijklmn0123"]
