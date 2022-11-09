@@ -23,7 +23,7 @@ type Info struct {
 }
 
 type Logging struct {
-	LogLevel      string `toml:"log_level"`         // (INFO|DEBUG|TRACE|ERROR)
+	LogLevel      string `toml:"log_level"`         // (TRACE|DEBUG|INFO|ERROR)
 	ConsoleOutput bool   `toml:"console_output"`    // Print logs to console
 	LogFileDir    string `toml:"log_file_location"` // location of the log files. Default is AppData/Tandem | Application Support/Tandem or ~/.tandem
 }

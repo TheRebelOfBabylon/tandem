@@ -24,10 +24,15 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Could not initialize configuration: %v\n", err)
 		os.Exit(1)
 	}
-	log, err := logger.InitLogger(cfg.Logging.ConsoleOutput, cfg.Logging.LogFileDir)
+	log, err := logger.InitLogger(cfg.Logging.ConsoleOutput, cfg.Logging.LogFileDir, cfg.Logging.LogLevel)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not initialize logger: %v\n", err)
 		os.Exit(1)
 	}
-	log.Info().Msgf("Testing %v", 13)
+	log.Info().Msg("testing info")
+	log.Debug().Msg("testing debug")
+	log.Warn().Msg("testing warn")
+	log.Error().Msg("testing error")
+	log.Trace().Msg("testing trace")
+	log.Fatal().Msg("testing fatal")
 }

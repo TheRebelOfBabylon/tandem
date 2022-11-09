@@ -17,7 +17,7 @@ const (
 	logFileName = "tandem.log"
 )
 
-func InitLogger(consoleOutput bool, logFileDir string) (zerolog.Logger, error) {
+func InitLogger(consoleOutput bool, logFileDir string, logLevel string) (zerolog.Logger, error) {
 	// open log file
 	var (
 		log_file *os.File
@@ -76,6 +76,17 @@ func InitLogger(consoleOutput bool, logFileDir string) (zerolog.Logger, error) {
 		logger = zerolog.New(multi).With().Timestamp().Logger()
 	} else {
 		logger = zerolog.New(log_file).With().Timestamp().Logger()
+	}
+	// set log level
+	switch logLevel {
+	case "DEBUG":
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	case "TRACE":
+		zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	case "ERROR":
+		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+	default:
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
 	return logger, nil
 }

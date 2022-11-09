@@ -6,8 +6,7 @@ pubkey="123abcdefg456"
 contact="mailto:alice@example.com"
 
 [logging]
-log_level="DEBUG"
-console_output=false
+log_level="ERROR"
 log_file_location="/Users/paulcote/Downloads"
 
 [auth]
