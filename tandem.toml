@@ -6,8 +6,9 @@ pubkey="123abcdefg456"
 contact="mailto:alice@example.com"
 
 [logging]
-log_level="ERROR"
+log_level="TRACE"
 log_file_location="/Users/paulcote/Downloads"
+log_file_size=1 # MB
 
 [auth]
 whitelist=["789hijklmn0123"]

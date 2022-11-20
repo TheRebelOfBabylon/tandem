@@ -14,10 +14,12 @@ import (
 )
 
 const (
-	logFileName = "tandem.log"
+	logFileNameRoot = "tandem"
+	logFileName     = "tandem.log"
+	logFileExt      = "log"
 )
 
-func InitLogger(consoleOutput bool, logFileDir string, logLevel string) (zerolog.Logger, error) {
+func InitLogger(consoleOutput bool, logFileDir string, logLevel string, maxLogFileSize uint32, maxLogFiles uint16) (zerolog.Logger, error) {
 	// open log file
 	var (
 		log_file *os.File
@@ -39,6 +41,15 @@ func InitLogger(consoleOutput bool, logFileDir string, logLevel string) (zerolog
 		} else {
 			return logger, err
 		}
+	}
+	// use modified writer to manage log file size
+	modded_file := &moddedFileWriter{
+		File:         log_file,
+		maxFileSize:  maxLogFileSize * 1000000,
+		maxFiles:     maxLogFiles,
+		fileNameRoot: logFileNameRoot,
+		fileExt:      logFileExt,
+		pathToFile:   logFileDir,
 	}
 	// add console output if option is chosen
 	if consoleOutput {
@@ -72,10 +83,10 @@ func InitLogger(consoleOutput bool, logFileDir string, logLevel string) (zerolog
 			}
 			return msg + fmt.Sprintf("\t")
 		}
-		multi := zerolog.MultiLevelWriter(output, log_file)
+		multi := zerolog.MultiLevelWriter(output, modded_file)
 		logger = zerolog.New(multi).With().Timestamp().Logger()
 	} else {
-		logger = zerolog.New(log_file).With().Timestamp().Logger()
+		logger = zerolog.New(modded_file).With().Timestamp().Logger()
 	}
 	// set log level
 	switch logLevel {

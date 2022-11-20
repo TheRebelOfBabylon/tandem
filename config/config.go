@@ -26,6 +26,8 @@ type Logging struct {
 	LogLevel      string `toml:"log_level"`         // (TRACE|DEBUG|INFO|ERROR)
 	ConsoleOutput bool   `toml:"console_output"`    // Print logs to console
 	LogFileDir    string `toml:"log_file_location"` // location of the log files. Default is AppData/Tandem | Application Support/Tandem or ~/.tandem
+	LogFileSize   uint32 `toml:"log_file_size"`     // Maximum size of a log file in MB
+	MaxLogFiles   uint16 `toml:"max_log_files"`     // Maximum number of log files in a rotation. 0 for no rotation: Default 0
 }
 
 type Data struct {
@@ -71,9 +73,11 @@ var (
 	default_max_event_size     uint32 = math.MaxUint32
 	default_max_ws_msg_size    uint32 = math.MaxUint32
 	default_reject_future_secs uint64 = 1800
+	default_log_size           uint32 = 10
+	default_max_log_files      uint16 = 0
 	default_config                    = func() Config {
 		return Config{
-			Logging:  Logging{LogLevel: default_log_level, LogFileDir: default_log_dir, ConsoleOutput: default_console_out},
+			Logging:  Logging{LogLevel: default_log_level, LogFileDir: default_log_dir, ConsoleOutput: default_console_out, LogFileSize: default_log_size, MaxLogFiles: default_max_log_files},
 			Database: Data{DataDir: default_data_dir},
 			Network:  Network{BindAddress: default_bind_address, Port: default_port, PingInterval: default_ping_interval},
 			Limits:   Limits{MsgPerSec: default_msg_per_sec, MaxEventSize: default_max_event_size, MaxWSMsgSize: default_max_ws_msg_size, RejectFutureSecs: default_reject_future_secs},
