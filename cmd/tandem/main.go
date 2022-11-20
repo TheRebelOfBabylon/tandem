@@ -24,13 +24,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Could not initialize configuration: %v\n", err)
 		os.Exit(1)
 	}
-	log, err := logger.InitLogger(
-		cfg.Logging.ConsoleOutput,
-		cfg.Logging.LogFileDir,
-		cfg.Logging.LogLevel,
-		cfg.Logging.LogFileSize,
-		cfg.Logging.MaxLogFiles,
-	)
+	log, err := logger.InitLogger(&cfg.Logging)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not initialize logger: %v\n", err)
 		os.Exit(1)

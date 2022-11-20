@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/SSSOC-CAN/laniakea/utils"
+	"github.com/TheRebelOfBabylon/tandem/config"
 	"github.com/mattn/go-colorable"
 	color "github.com/mgutz/ansi"
 	"github.com/rs/zerolog"
@@ -19,22 +20,22 @@ const (
 	logFileExt      = "log"
 )
 
-func InitLogger(consoleOutput bool, logFileDir string, logLevel string, maxLogFileSize uint32, maxLogFiles uint16) (zerolog.Logger, error) {
+func InitLogger(cfg *config.Logging) (zerolog.Logger, error) {
 	// open log file
 	var (
 		log_file *os.File
 		logger   zerolog.Logger
 		err      error
 	)
-	log_file, err = os.OpenFile(path.Join(logFileDir, logFileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	log_file, err = os.OpenFile(path.Join(cfg.LogFileDir, logFileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		// try to create AppData/Tandem | Application Support/Tandem or ~/.tandem file if logFileDir is pointing there
-		if utils.AppDataDir("tandem", false) == logFileDir {
+		if utils.AppDataDir("tandem", false) == cfg.LogFileDir {
 			err = os.Mkdir(utils.AppDataDir("tandem", false), 0755)
 			if err != nil {
 				return logger, err
 			}
-			log_file, err = os.OpenFile(path.Join(logFileDir, logFileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			log_file, err = os.OpenFile(path.Join(cfg.LogFileDir, logFileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				return logger, err
 			}
@@ -45,14 +46,14 @@ func InitLogger(consoleOutput bool, logFileDir string, logLevel string, maxLogFi
 	// use modified writer to manage log file size
 	modded_file := &moddedFileWriter{
 		File:         log_file,
-		maxFileSize:  maxLogFileSize * 1000000,
-		maxFiles:     maxLogFiles,
+		maxFileSize:  cfg.LogFileSize * 1000000,
+		maxFiles:     cfg.MaxLogFiles,
 		fileNameRoot: logFileNameRoot,
 		fileExt:      logFileExt,
-		pathToFile:   logFileDir,
+		pathToFile:   cfg.LogFileDir,
 	}
 	// add console output if option is chosen
-	if consoleOutput {
+	if cfg.ConsoleOutput {
 		output := zerolog.NewConsoleWriter()
 		if runtime.GOOS == "windows" {
 			output.Out = colorable.NewColorableStdout()
@@ -89,7 +90,7 @@ func InitLogger(consoleOutput bool, logFileDir string, logLevel string, maxLogFi
 		logger = zerolog.New(modded_file).With().Timestamp().Logger()
 	}
 	// set log level
-	switch logLevel {
+	switch cfg.LogLevel {
 	case "DEBUG":
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	case "TRACE":
