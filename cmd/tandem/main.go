@@ -4,10 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/SSSOC-CAN/laniakea/intercept"
 	"github.com/SSSOC-CAN/laniakea/utils"
+	"github.com/TheRebelOfBabylon/tandem"
 	"github.com/TheRebelOfBabylon/tandem/config"
 	"github.com/TheRebelOfBabylon/tandem/logger"
 	u "github.com/TheRebelOfBabylon/tandem/utils"
@@ -37,15 +37,9 @@ func main() {
 		os.Exit(1)
 	}
 	interceptor.Logger = &log
-	log.Info().Msg("testing info")
-	log.Debug().Msg("testing debug")
-	log.Warn().Msg("testing warn")
-	log.Error().Msg("testing error")
-	log.Trace().Msg("testing trace")
-	//log.Fatal().Msg("testing fatal")
-	go func() {
-		time.Sleep(5 * time.Second)
-		interceptor.RequestShutdown()
-	}()
-	<-interceptor.ShutdownChannel()
+	err = tandem.Main(cfg, log, interceptor)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
