@@ -69,7 +69,7 @@ func Main(cfg *config.Config, log zerolog.Logger, interceptor *intercept.Interce
 	// We need to start the WebSocket server
 	// Define the gorilla mux router
 	router := mux.NewRouter()
-	withLogger := CustomHandlerFactory(log)
+	withLogger := CustomHandlerFactory(log.With().Str("subsystem", "HTTP").Logger())
 	router.Handle("/", withLogger(newConnectionHandler))
 	router.Use(loggingHandler)
 	httpSrv := &http.Server{
