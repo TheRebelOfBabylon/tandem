@@ -1,0 +1,19 @@
+[relay]
+url="wss://example.com"
+name="an example relay"
+description="description of example relay"
+pubkey="123abcdefg456"
+contact="mailto:alice@example.com"
+
+[logging]
+log_level="TRACE"
+log_file_location="/Users/me/Downloads"
+log_file_size=1 # MB
+
+[auth]
+whitelist=["789hijklmn0123"]
+
+[database]
+username="myusername"
+password="password123"
+address="localhost:27017"
