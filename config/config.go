@@ -31,7 +31,9 @@ type Logging struct {
 }
 
 type Data struct {
-	DataDir string `toml:"data_directory"` // Directory for the database. Defaults to AppData | Application Support | ~/.tandem
+	DBUser string `toml:"username"` // Username to access the database
+	DBPass string `toml:"password"` // Password to the database
+	DBAddr string `toml:"address"`  // IP address + port or URL for the database ex: localhost:27017
 }
 
 type Network struct {
@@ -65,9 +67,8 @@ var (
 	default_bind_address              = "0.0.0.0"
 	default_port               uint16 = 5150
 	default_ping_interval      uint16 = 300
-	default_data_dir                  = utils.AppDataDir("tandem", false)
 	default_log_level                 = "ERROR"
-	default_log_dir                   = default_data_dir
+	default_log_dir                   = utils.AppDataDir("tandem", false)
 	default_console_out               = true
 	default_msg_per_sec        uint32 = 50000
 	default_max_event_size     uint32 = math.MaxUint32
@@ -77,10 +78,9 @@ var (
 	default_max_log_files      uint16 = 0
 	default_config                    = func() Config {
 		return Config{
-			Logging:  Logging{LogLevel: default_log_level, LogFileDir: default_log_dir, ConsoleOutput: default_console_out, LogFileSize: default_log_size, MaxLogFiles: default_max_log_files},
-			Database: Data{DataDir: default_data_dir},
-			Network:  Network{BindAddress: default_bind_address, Port: default_port, PingInterval: default_ping_interval},
-			Limits:   Limits{MsgPerSec: default_msg_per_sec, MaxEventSize: default_max_event_size, MaxWSMsgSize: default_max_ws_msg_size, RejectFutureSecs: default_reject_future_secs},
+			Logging: Logging{LogLevel: default_log_level, LogFileDir: default_log_dir, ConsoleOutput: default_console_out, LogFileSize: default_log_size, MaxLogFiles: default_max_log_files},
+			Network: Network{BindAddress: default_bind_address, Port: default_port, PingInterval: default_ping_interval},
+			Limits:  Limits{MsgPerSec: default_msg_per_sec, MaxEventSize: default_max_event_size, MaxWSMsgSize: default_max_ws_msg_size, RejectFutureSecs: default_reject_future_secs},
 		}
 	}
 )
