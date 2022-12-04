@@ -46,6 +46,7 @@ func newConnectionHandler(w http.ResponseWriter, r *http.Request, log zerolog.Lo
 		return
 	}
 	defer conn.Close()
+	log.Debug().Msgf("Client IP: %v", conn.RemoteAddr().String())
 	for {
 		messageType, message, err := conn.ReadMessage()
 		if err != nil {
