@@ -5,25 +5,27 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/TheRebelOfBabylon/tandem/db"
 	"github.com/rs/zerolog"
 )
 
 type CustomHandler struct {
 	zerolog.Logger
 	handlerFunc LogHandleFunc
+	Client      *db.MongoDB
 }
 
-type LogHandleFunc = func(w http.ResponseWriter, r *http.Request, log zerolog.Logger)
+type LogHandleFunc = func(w http.ResponseWriter, r *http.Request, log zerolog.Logger, dbClient *db.MongoDB)
 
 // ServeHTTP satisfies the http.Handler interface
 func (c *CustomHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	c.handlerFunc(w, r, c.Logger)
+	c.handlerFunc(w, r, c.Logger, c.Client)
 }
 
 // CustomHandlerFactory creates new handlers automatically instead of creating them for each endpoint
-func CustomHandlerFactory(log zerolog.Logger) func(LogHandleFunc) *CustomHandler {
+func CustomHandlerFactory(log zerolog.Logger, dbClient *db.MongoDB) func(LogHandleFunc) *CustomHandler {
 	return func(hf LogHandleFunc) *CustomHandler {
-		return &CustomHandler{Logger: log, handlerFunc: hf}
+		return &CustomHandler{Logger: log, handlerFunc: hf, Client: dbClient}
 	}
 }
 
