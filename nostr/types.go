@@ -1,8 +1,10 @@
 package nostr
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 
 	bg "github.com/SSSOCPaulCote/blunderguard"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -29,6 +31,32 @@ type Event struct {
 	Sig       string
 }
 
+// CreateEventId creates the EventId from the serialized Event content
+func (e *Event) CreateEventId() []byte {
+	serialTags := []byte{'['}
+	for _, tag := range e.Tags {
+		if len(tag) != 0 {
+			serialTags = append(serialTags, '[')
+			for _, t := range tag {
+				serialTags = append(serialTags, '"')
+				serialTags = append(serialTags, t...)
+				serialTags = append(serialTags, '"')
+				serialTags = append(serialTags, ',')
+			}
+			serialTags[len(serialTags)-1] = ']'
+			serialTags = append(serialTags, ',')
+		}
+	}
+	if len(serialTags) == 1 {
+		serialTags = append(serialTags, ']')
+	} else {
+		serialTags[len(serialTags)-1] = ']'
+	}
+	serial := fmt.Sprintf("[0,\"%s\",%v,%v,%s,\"%s\"]", e.Pubkey, e.CreatedAt, e.Kind, serialTags, e.Content)
+	hash := sha256.Sum256([]byte(serial))
+	return hash[:]
+}
+
 type Filter struct {
 	Ids     []string
 	Authors []string
@@ -49,8 +77,8 @@ type Close struct {
 }
 
 // ValidateSignature validates the signature of a serialized event against a pubkey
-func ValidateSignature(pubkey, sig, eventId string) error {
-	pub, err := hex.DecodeString(pubkey)
+func ValidateSignature(event Event) error {
+	pub, err := hex.DecodeString(event.Pubkey)
 	if err != nil {
 		return err
 	}
@@ -58,7 +86,7 @@ func ValidateSignature(pubkey, sig, eventId string) error {
 	if err != nil {
 		return err
 	}
-	signature, err := hex.DecodeString(sig)
+	signature, err := hex.DecodeString(event.Sig)
 	if err != nil {
 		return err
 	}
@@ -66,15 +94,11 @@ func ValidateSignature(pubkey, sig, eventId string) error {
 	if err != nil {
 		return err
 	}
-	e, err := hex.DecodeString(eventId)
-	if err != nil {
-		return err
-	}
+	e := event.CreateEventId()
 	ok := s.Verify(e, pk)
 	if !ok {
 		return ErrInvalidSig
 	}
-	// TODO - Validate eventId format
 	return nil
 }
 
@@ -86,9 +110,9 @@ func ValidateNostr(msg interface{}) (interface{}, error) {
 			return nil, ErrNoContent
 		} else if m.Pubkey == "" || m.Sig == "" || m.CreatedAt == 0 || m.Kind == 0 || m.EventId == "" {
 			return nil, ErrMissingField
-		} else if err := ValidateSignature(m.Pubkey, m.Sig, m.EventId); err != nil {
+		} else if err := ValidateSignature(m); err != nil {
 			return nil, err
-		}
+		} // else if CreatedAt is close to time.Now()
 		return m, nil
 	case string:
 		if m == "" {
