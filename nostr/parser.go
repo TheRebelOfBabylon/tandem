@@ -11,7 +11,6 @@ import (
 )
 
 const (
-	ErrInvalidFormat    = bg.Error("invalid websocket message format")
 	ErrInvalidEvent     = bg.Error("invalid event message format")
 	ErrInvalidReq       = bg.Error("invalid request message format")
 	ErrInvalidClose     = bg.Error("invalid close message format")
@@ -76,11 +75,11 @@ func ValidateSignature(event Event) error {
 // ValidateEvent validates the parsed nostr event for formatting, signatures, etc.
 func ValidateEvent(event Event) (interface{}, error) {
 	if event.Content == "" {
-		return nil, ErrNoContent
+		return event, ErrNoContent
 	} else if event.Pubkey == "" || event.Sig == "" || event.CreatedAt == 0 || event.Kind == 0 || event.EventId == "" {
-		return nil, ErrMissingField
+		return event, ErrMissingField
 	} else if err := ValidateSignature(event); err != nil {
-		return nil, err
+		return event, err
 	} // else if CreatedAt is close to time.Now() NIP-22
 	return event, nil
 }
@@ -101,7 +100,7 @@ func ParseAndValidateNostr(msg []byte, p *SafeParser) (interface{}, error) {
 		return nil, err
 	}
 	if len(arr) == 0 || len(arr) < 2 {
-		return nil, ErrInvalidFormat
+		return nil, ErrInvalidNostrMsg
 	}
 	switch string(arr[0].GetStringBytes()) {
 	case "EVENT":
@@ -126,52 +125,52 @@ func ParseAndValidateNostr(msg []byte, p *SafeParser) (interface{}, error) {
 			case "pubkey":
 				pk, err := e.Get(key).StringBytes()
 				if err != nil {
-					return nil, err
+					return event, err
 				}
 				event.Pubkey = string(pk)
 			case "created_at":
 				ts, err := e.Get(key).Uint64()
 				if err != nil {
-					return nil, err
+					return event, err
 				}
 				event.CreatedAt = ts
 			case "kind":
 				ts, err := e.Get(key).Uint()
 				if err != nil {
-					return nil, err
+					return event, err
 				}
 				event.Kind = uint16(ts)
 			case "content":
 				cnt, err := e.Get(key).StringBytes()
 				if err != nil {
-					return nil, err
+					return event, err
 				}
 				event.Content = string(cnt)
 			case "sig":
 				sig, err := e.Get(key).StringBytes()
 				if err != nil {
-					return nil, err
+					return event, err
 				}
 				event.Sig = string(sig)
 			case "tags":
 				tags, err := e.Get(key).Array()
 				if err != nil {
-					return nil, err
+					return event, err
 				}
 				for _, t := range tags {
 					tag, err := t.Array()
 					if err != nil {
-						return nil, err
+						return event, err
 					}
 					var tagStrings []string
 					reg := regexp.MustCompile(tagEventRegexp)
 					for x, el := range tag {
 						elem, err := el.StringBytes()
 						if err != nil {
-							return nil, err
+							return event, err
 						}
 						if x == 0 && !reg.Match(elem) {
-							return nil, ErrInvalidTagFormat
+							return event, ErrInvalidTagFormat
 						}
 						tagStrings = append(tagStrings, string(elem))
 					}
@@ -289,6 +288,6 @@ func ParseAndValidateNostr(msg []byte, p *SafeParser) (interface{}, error) {
 		close.SubscriptionId = string(subId)
 		return close, nil
 	default:
-		return nil, ErrInvalidFormat
+		return nil, ErrInvalidNostrMsg
 	}
 }
