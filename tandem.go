@@ -41,7 +41,7 @@ func loggingHandler(next http.Handler) http.Handler {
 }
 
 // newConnectionHandler handles the incoming HTTP 1.0 request and upgrades it to establish the WebSocket connection
-func newConnectionHandler(w http.ResponseWriter, r *http.Request, log zerolog.Logger, dbClient *db.MongoDB) {
+func newConnectionHandler(w http.ResponseWriter, r *http.Request, log zerolog.Logger, dbClient *db.MongoDB, p *nostr.SafeParser) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Error().Msgf("Error when upgrading to WebSocket connection: %v", err)
@@ -59,7 +59,7 @@ loop:
 		switch messageType {
 		case websocket.TextMessage:
 			// let's validate it's a Nostr message
-			msg, err := nostr.ParseNostr(message)
+			msg, err := nostr.ParseNostr(message, p)
 			// TODO - Add an error counter and end connection with clients sending broken messages
 			if err != nil {
 				log.Error().Msgf("%v", err)
@@ -101,10 +101,13 @@ func Main(cfg *config.Config, log zerolog.Logger, interceptor *intercept.Interce
 		return err
 	}
 
+	// Create goroutine safe, fastjson parser
+	var p nostr.SafeParser
+
 	// We need to start the WebSocket server
 	// Define the gorilla mux router
 	router := mux.NewRouter()
-	withLogger := CustomHandlerFactory(log.With().Str("subsystem", "HTTP").Logger(), conn)
+	withLogger := CustomHandlerFactory(log.With().Str("subsystem", "HTTP").Logger(), conn, &p)
 	router.Handle("/", withLogger(newConnectionHandler))
 	router.Use(loggingHandler)
 	httpSrv := &http.Server{

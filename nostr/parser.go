@@ -92,7 +92,7 @@ func ValidateNostr(msg interface{}) (interface{}, error) {
 }
 
 // ParseNostr parses the raw WebSocket message and checks if it's a Nostr EVENT, REQ or CLOSE message
-func ParseNostr(msg []byte) (interface{}, error) {
+func ParseNostr(msg []byte, p *SafeParser) (interface{}, error) {
 	var result []string // Raw nostr messages are JSON arrays
 	json.Unmarshal(msg, &result)
 	if len(result) == 0 {
