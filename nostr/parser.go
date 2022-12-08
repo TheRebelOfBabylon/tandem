@@ -37,7 +37,7 @@ type SafeParser struct {
 func keyDuplicate(keys []string) bool {
 	visited := make(map[string]bool, 0)
 	for _, key := range keys {
-		if visited[key] == true {
+		if visited[key] {
 			return true
 		} else {
 			visited[key] = true
@@ -72,33 +72,21 @@ func ValidateSignature(event Event) error {
 	return nil
 }
 
-// ValidateNostr validates the parsed nostr message for formatting, signatures, etc. and returns a proper struct
-func ValidateNostr(msg interface{}) (interface{}, error) {
-	switch m := msg.(type) {
-	case Event:
-		if m.Content == "" {
-			return nil, ErrNoContent
-		} else if m.Pubkey == "" || m.Sig == "" || m.CreatedAt == 0 || m.Kind == 0 || m.EventId == "" {
-			return nil, ErrMissingField
-		} else if err := ValidateSignature(m); err != nil {
-			return nil, err
-		} // else if CreatedAt is close to time.Now()
-		return m, nil
-	case string:
-		if m == "" {
-			return nil, ErrMissingField
-		}
-		return m, nil
-	case []map[string]any:
-		// TODO - Parse filters
-		return m, nil
-	default:
-		return nil, ErrInvalidNostrMsg
-	}
+// ValidateEvent validates the parsed nostr event for formatting, signatures, etc.
+func ValidateEvent(event Event) (interface{}, error) {
+	if event.Content == "" {
+		return nil, ErrNoContent
+	} else if event.Pubkey == "" || event.Sig == "" || event.CreatedAt == 0 || event.Kind == 0 || event.EventId == "" {
+		return nil, ErrMissingField
+	} else if err := ValidateSignature(event); err != nil {
+		return nil, err
+	} // else if CreatedAt is close to time.Now() NIP-22
+	return event, nil
 }
 
-// ParseNostr parses the raw WebSocket message and checks if it's a Nostr EVENT, REQ or CLOSE message
-func ParseNostr(msg []byte, p *SafeParser) (interface{}, error) {
+// ParseAndValidateNostr parses the raw WebSocket message and checks if it's a Nostr EVENT, REQ or CLOSE message
+// Performs some validation as well.
+func ParseAndValidateNostr(msg []byte, p *SafeParser) (interface{}, error) {
 	// First take the lock on the parser
 	p.Lock()
 	defer p.Unlock()
@@ -192,7 +180,7 @@ func ParseNostr(msg []byte, p *SafeParser) (interface{}, error) {
 				return nil, ErrInvalidEvent
 			}
 		}
-		return event, nil
+		return ValidateEvent(event)
 	case "REQ":
 		var req Request
 		subId, err := arr[1].StringBytes()
@@ -289,7 +277,7 @@ func ParseNostr(msg []byte, p *SafeParser) (interface{}, error) {
 				}
 			}
 		}
-		return req, nil
+		return req, nil // TODO - ValidateReq function to perform some validation
 	case "CLOSE":
 		var close Close
 		subId, err := arr[1].StringBytes()

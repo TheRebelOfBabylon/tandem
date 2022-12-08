@@ -59,19 +59,13 @@ loop:
 		switch messageType {
 		case websocket.TextMessage:
 			// let's validate it's a Nostr message
-			msg, err := nostr.ParseNostr(message, p)
+			msg, err := nostr.ParseAndValidateNostr(message, p)
 			// TODO - Add an error counter and end connection with clients sending broken messages
 			if err != nil {
 				log.Error().Msgf("%v", err)
 				continue
 			}
 			log.Debug().Msgf("Parsed Nostr message: %v", msg)
-			msg, err = nostr.ValidateNostr(msg)
-			if err != nil {
-				log.Error().Msgf("%v", err)
-				continue
-			}
-			log.Debug().Msgf("Validated Nostr message: %v", msg)
 		case websocket.CloseMessage:
 			log.Debug().Msgf("closing connection to %v...", conn.RemoteAddr().String())
 			break loop
