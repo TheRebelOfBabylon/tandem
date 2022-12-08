@@ -28,20 +28,18 @@ var (
 
 // loggingHandler is an HTTP handler to log HTTP method, URL, status code and time to perform the wrapped handler
 func loggingHandler(next http.Handler) http.Handler {
-	fn := func(w http.ResponseWriter, r *http.Request, log zerolog.Logger, dbClient *db.MongoDB) {
+	fn := func(w http.ResponseWriter, r *http.Request, log zerolog.Logger, dbClient *db.MongoDB, p *nostr.SafeParser) {
 		o := &ResponseObserver{ResponseWriter: w}
-		t1 := time.Now()
 		next.ServeHTTP(o, r)
-		t2 := time.Now()
-		log.Info().Msgf("[%s] %q %d %v", r.Method, r.URL.String(), o.status, t2.Sub(t1))
+		log.Info().Msgf("[%s] %q %d", r.Method, r.URL.String(), o.status)
 	}
 	ch, _ := next.(*CustomHandler)
-	return &CustomHandler{Logger: ch.Logger, handlerFunc: fn, Client: ch.Client}
+	return &CustomHandler{Logger: ch.Logger, handlerFunc: fn, Client: ch.Client, Parser: ch.Parser}
 
 }
 
 // newConnectionHandler handles the incoming HTTP 1.0 request and upgrades it to establish the WebSocket connection
-func newConnectionHandler(w http.ResponseWriter, r *http.Request, log zerolog.Logger, dbClient *db.MongoDB) {
+func newConnectionHandler(w http.ResponseWriter, r *http.Request, log zerolog.Logger, dbClient *db.MongoDB, p *nostr.SafeParser) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Error().Msgf("Error when upgrading to WebSocket connection: %v", err)
@@ -51,6 +49,7 @@ func newConnectionHandler(w http.ResponseWriter, r *http.Request, log zerolog.Lo
 	log.Debug().Msgf("Client IP: %v", conn.RemoteAddr().String())
 loop:
 	for {
+		// TODO - Add rate limiting
 		messageType, message, err := conn.ReadMessage()
 		if err != nil {
 			log.Error().Msgf("Error during message reading: %v", err)
@@ -59,19 +58,16 @@ loop:
 		switch messageType {
 		case websocket.TextMessage:
 			// let's validate it's a Nostr message
-			msg, err := nostr.ParseNostr(message)
+			msg, err := nostr.ParseAndValidateNostr(message, p)
 			// TODO - Add an error counter and end connection with clients sending broken messages
 			if err != nil {
 				log.Error().Msgf("%v", err)
+				// TODO - Send error message as per NIP-20
 				continue
 			}
+			// Store and check if active filters require sending it down the pipeline
+			// Check if event has already been saved in db and send error for duplicates
 			log.Debug().Msgf("Parsed Nostr message: %v", msg)
-			msg, err = nostr.ValidateNostr(msg)
-			if err != nil {
-				log.Error().Msgf("%v", err)
-				continue
-			}
-			log.Debug().Msgf("Validated Nostr message: %v", msg)
 		case websocket.CloseMessage:
 			log.Debug().Msgf("closing connection to %v...", conn.RemoteAddr().String())
 			break loop
@@ -101,10 +97,13 @@ func Main(cfg *config.Config, log zerolog.Logger, interceptor *intercept.Interce
 		return err
 	}
 
+	// Create goroutine safe, fastjson parser
+	var p nostr.SafeParser
+
 	// We need to start the WebSocket server
 	// Define the gorilla mux router
 	router := mux.NewRouter()
-	withLogger := CustomHandlerFactory(log.With().Str("subsystem", "HTTP").Logger(), conn)
+	withLogger := CustomHandlerFactory(log.With().Str("subsystem", "HTTP").Logger(), conn, &p)
 	router.Handle("/", withLogger(newConnectionHandler))
 	router.Use(loggingHandler)
 	httpSrv := &http.Server{
@@ -121,10 +120,6 @@ func Main(cfg *config.Config, log zerolog.Logger, interceptor *intercept.Interce
 			log.Error().Msgf("Unexpected error when stopping HTTP server: %v", err)
 		}
 	}()
-
-	// Run the Nostr protocol overtop the WebSocket connections
-	// Listen for key Nostr events
-	// Take appropriate actions
 	<-interceptor.ShutdownChannel()
 	// Graceful shutdown of HTTP server
 	httpSrv.Shutdown(ctx)
