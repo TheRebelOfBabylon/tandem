@@ -24,7 +24,8 @@ const (
 )
 
 var (
-	tagRegexp = `^\#[a-z]$`
+	tagRegexp      = `^\#[a-z]$`
+	tagEventRegexp = `^[a-z]$`
 )
 
 type SafeParser struct {
@@ -163,7 +164,7 @@ func ParseAndValidateNostr(msg []byte, p *SafeParser) (interface{}, error) {
 						return nil, err
 					}
 					var tagStrings []string
-					reg := regexp.MustCompile(tagRegexp)
+					reg := regexp.MustCompile(tagEventRegexp)
 					for x, el := range tag {
 						elem, err := el.StringBytes()
 						if err != nil {
@@ -276,6 +277,7 @@ func ParseAndValidateNostr(msg []byte, p *SafeParser) (interface{}, error) {
 					}
 				}
 			}
+			req.Filters = append(req.Filters, fil)
 		}
 		return req, nil // TODO - ValidateReq function to perform some validation
 	case "CLOSE":
