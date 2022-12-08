@@ -6,9 +6,9 @@ import (
 )
 
 type Event struct {
-	EventId   string `json:"id"`
+	EventId   string
 	Pubkey    string
-	CreatedAt uint32 `json:"created_at"`
+	CreatedAt uint64
 	Kind      uint16
 	Tags      [][]string
 	Content   string
