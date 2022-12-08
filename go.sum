@@ -42,6 +42,8 @@ github.com/SSSOC-CAN/laniakea-plugin-sdk v0.0.0-20220922202618-523022bce011 h1:R
 github.com/SSSOC-CAN/laniakea-plugin-sdk v0.0.0-20220922202618-523022bce011/go.mod h1:MpNmx/d9DObeAXQUR10npztJXOk8iotQWOS1sjIX3Hc=
 github.com/SSSOCPaulCote/blunderguard v0.0.0-20220611160827-401cd5c1610a h1:lloMlsBR6U0EIx/KuVkwsP6/I3Ci6M4jiKjZAKOQTks=
 github.com/SSSOCPaulCote/blunderguard v0.0.0-20220611160827-401cd5c1610a/go.mod h1:QmPQSk28XTjXldnFMmKGnYtux+oAI7n4h+VmXqi6Edg=
+github.com/TheRebelOfBabylon/fastjson v0.0.0-20221207031646-46bdb89560d7 h1:rvw2mznlaSG3KnujcswXlFcOUrmgx/77u1Q6az4EtoI=
+github.com/TheRebelOfBabylon/fastjson v0.0.0-20221207031646-46bdb89560d7/go.mod h1:DwwF6HWddBW7aa06ltxd9fwxTSvsnkTlq9SfReNOUZg=
 github.com/aead/siphash v1.0.1/go.mod h1:Nywa3cDsYNNK3gaciGTWPwHt0wlpNV15vwmswBAUSII=
 github.com/antihax/optional v1.0.0/go.mod h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kdvxnR2qWY=
 github.com/btcsuite/btcd v0.0.0-20190824003749-130ea5bddde3/go.mod h1:3J08xEfcugPacsc34/LKRU2yO7YmuT8yt28J8k2+rrI=
@@ -290,6 +292,8 @@ github.com/stretchr/testify v1.8.0 h1:pSgiaMZlXftHpm5L7V1+rVB+AZJydKsMxsQBIJw4PK
 github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
 github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7/go.mod h1:q4W45IWZaF22tdD+VEXcAWRA037jwmWEB5VWYORlTpc=
 github.com/tidwall/pretty v1.0.0/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhVysOjyk=
+github.com/valyala/fastjson v1.6.3 h1:tAKFnnwmeMGPbwJ7IwxcTPCNr3uIzoIj3/Fh90ra4xc=
+github.com/valyala/fastjson v1.6.3/go.mod h1:CLCAqky6SMuOcxStkYQvblddUtoRxhYMGLrsQns1aXY=
 github.com/xdg-go/pbkdf2 v1.0.0 h1:Su7DPu48wXMwC3bs7MCNG+z4FhcyEuz5dlvchbq0B0c=
 github.com/xdg-go/pbkdf2 v1.0.0/go.mod h1:jrpuAogTd400dnrH08LKmI/xc1MbPOebTwRqcT5RDeI=
 github.com/xdg-go/scram v1.1.1 h1:VOMT+81stJgXW3CpHyqHN3AXDYIMsx56mEFrB37Mb/E=

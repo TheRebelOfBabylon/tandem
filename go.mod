@@ -13,6 +13,7 @@ require (
 
 require (
 	github.com/SSSOC-CAN/laniakea-plugin-sdk v0.0.0-20220922202618-523022bce011 // indirect
+	github.com/TheRebelOfBabylon/fastjson v0.0.0-20221207031646-46bdb89560d7 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2 // indirect
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.0.1 // indirect
 	github.com/btcsuite/btcwallet v0.16.1 // indirect
@@ -31,6 +32,7 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rogpeppe/fastuuid v1.2.0 // indirect
 	github.com/stretchr/testify v1.8.0 // indirect
+	github.com/valyala/fastjson v1.6.3 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.1.1 // indirect
 	github.com/xdg-go/stringprep v1.0.3 // indirect
