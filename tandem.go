@@ -28,7 +28,7 @@ var (
 
 // loggingHandler is an HTTP handler to log HTTP method, URL, status code and time to perform the wrapped handler
 func loggingHandler(next http.Handler) http.Handler {
-	fn := func(w http.ResponseWriter, r *http.Request, log zerolog.Logger, dbClient *db.MongoDB) {
+	fn := func(w http.ResponseWriter, r *http.Request, log zerolog.Logger, dbClient *db.MongoDB, p *nostr.SafeParser) {
 		o := &ResponseObserver{ResponseWriter: w}
 		t1 := time.Now()
 		next.ServeHTTP(o, r)
@@ -36,7 +36,7 @@ func loggingHandler(next http.Handler) http.Handler {
 		log.Info().Msgf("[%s] %q %d %v", r.Method, r.URL.String(), o.status, t2.Sub(t1))
 	}
 	ch, _ := next.(*CustomHandler)
-	return &CustomHandler{Logger: ch.Logger, handlerFunc: fn, Client: ch.Client}
+	return &CustomHandler{Logger: ch.Logger, handlerFunc: fn, Client: ch.Client, Parser: ch.Parser}
 
 }
 
@@ -63,8 +63,10 @@ loop:
 			// TODO - Add an error counter and end connection with clients sending broken messages
 			if err != nil {
 				log.Error().Msgf("%v", err)
+				// TODO - Send error message as per NIP-20
 				continue
 			}
+			// if no errors, store and check if active filters require sending it down the pipeline
 			log.Debug().Msgf("Parsed Nostr message: %v", msg)
 		case websocket.CloseMessage:
 			log.Debug().Msgf("closing connection to %v...", conn.RemoteAddr().String())
