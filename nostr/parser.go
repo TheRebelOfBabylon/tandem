@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"regexp"
 	"sync"
+	"time"
 
 	bg "github.com/SSSOCPaulCote/blunderguard"
 	"github.com/TheRebelOfBabylon/fastjson"
@@ -76,7 +77,7 @@ func ValidateSignature(event Event) error {
 func ValidateEvent(event Event) (interface{}, error) {
 	if event.Content == "" {
 		return event, ErrNoContent
-	} else if event.Pubkey == "" || event.Sig == "" || event.CreatedAt == 0 || event.Kind == 0 || event.EventId == "" {
+	} else if event.Pubkey == "" || event.Sig == "" || event.Kind == 0 || event.EventId == "" {
 		return event, ErrMissingField
 	} else if err := ValidateSignature(event); err != nil {
 		return event, err
@@ -129,11 +130,11 @@ func ParseAndValidateNostr(msg []byte, p *SafeParser) (interface{}, error) {
 				}
 				event.Pubkey = string(pk)
 			case "created_at":
-				ts, err := e.Get(key).Uint64()
+				ts, err := e.Get(key).Int64()
 				if err != nil {
 					return event, err
 				}
-				event.CreatedAt = ts
+				event.CreatedAt = time.Unix(ts, 0)
 			case "kind":
 				ts, err := e.Get(key).Uint()
 				if err != nil {

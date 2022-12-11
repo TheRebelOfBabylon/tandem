@@ -3,6 +3,7 @@ package nostr
 import (
 	"crypto/sha256"
 	"fmt"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 )
@@ -10,7 +11,7 @@ import (
 type Event struct {
 	EventId   string
 	Pubkey    string
-	CreatedAt uint64
+	CreatedAt time.Time
 	Kind      uint16
 	Tags      [][]string
 	Content   string
@@ -38,7 +39,7 @@ func (e *Event) CreateEventId() []byte {
 	} else {
 		serialTags[len(serialTags)-1] = ']'
 	}
-	serial := fmt.Sprintf("[0,\"%s\",%v,%v,%s,\"%s\"]", e.Pubkey, e.CreatedAt, e.Kind, serialTags, e.Content)
+	serial := fmt.Sprintf("[0,\"%s\",%v,%v,%s,\"%s\"]", e.Pubkey, e.CreatedAt.Unix(), e.Kind, serialTags, e.Content)
 	hash := sha256.Sum256([]byte(serial))
 	return hash[:]
 }
