@@ -60,32 +60,46 @@ loop:
 			// let's validate it's a Nostr message
 			msg, err := nostr.ParseAndValidateNostr(message, p)
 			// TODO - Add an error counter and end connection with clients sending broken messages
-			if err != nil {
-				log.Error().Msgf("error parsing nostr message: %v", err)
-				errMsg := fmt.Sprintf("[\"NOTICE\", \"%v\"]", err)
-				event, ok := msg.(nostr.Event)
-				if ok {
+			switch m := msg.(type) {
+			case nostr.Event:
+				// Handle parsing error
+				if err != nil {
+					log.Error().Msgf("error parsing nostr message: %v", err)
+					errMsg := fmt.Sprintf("[\"NOTICE\", \"%v\"]", err)
 					if err == nostr.ErrNoContent || err == nostr.ErrInvalidSig || err == nostr.ErrMissingField { // TODO - Add checking for invalid created_at field
-						errMsg = fmt.Sprintf("[\"OK\", \"%s\", %v, \"invalid: %v\"]", event.EventId, false, err)
+						errMsg = fmt.Sprintf("[\"OK\", \"%s\", %v, \"invalid: %v\"]", m.EventId, false, err)
 					}
+					err = conn.WriteMessage(websocket.TextMessage, []byte(errMsg))
+					if err != nil {
+						log.Error().Msgf("error sending command result: %v", err)
+						break loop
+					}
+					continue loop
 				}
-				err = conn.WriteMessage(websocket.TextMessage, []byte(errMsg))
+				log.Debug().Msgf("Parsed Nostr message: %v", m)
+				// Write to db
+				err = dbClient.InsertEvent(context.TODO(), m)
+				if err != nil {
+					log.Error().Msgf("error writing to database: %v", err)
+					errMsg := fmt.Sprintf("[\"OK\", \"%s\", %v, \"error: %v\"]", m.EventId, false, err)
+					if err == db.ErrEventDuplicate {
+						errMsg = fmt.Sprintf("[\"OK\", \"%s\", %v, \"duplicate: %v\"]", m.EventId, true, err)
+					}
+					err = conn.WriteMessage(websocket.TextMessage, []byte(errMsg))
+					if err != nil {
+						log.Error().Msgf("error sending command result: %v", err)
+						break loop
+					}
+					continue loop
+				}
+				// Send OK response
+				err = conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("[\"OK\", \"%s\", %v, \"\"]", m.EventId, true)))
 				if err != nil {
 					log.Error().Msgf("error sending command result: %v", err)
 					break loop
 				}
-				continue
-			}
-			// Store and check if active filters require sending it down the pipeline
-			// Check if event has already been saved in db and send error for duplicates
-			log.Debug().Msgf("Parsed Nostr message: %v", msg)
-			event, ok := msg.(nostr.Event)
-			if ok {
-				err = conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("[\"OK\", \"%s\", %v, \"\"]", event.EventId, true)))
-				if err != nil {
-					log.Error().Msgf("error sending command result: %v", err)
-					break loop
-				}
+				//case nostr.Request:
+				//case nostr.Close:
 			}
 		case websocket.CloseMessage:
 			log.Debug().Msgf("closing connection to %v...", conn.RemoteAddr().String())
