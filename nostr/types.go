@@ -2,9 +2,12 @@ package nostr
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"time"
 
+	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
@@ -18,8 +21,8 @@ type Event struct {
 	Sig       string
 }
 
-// CreateEventId creates the EventId from the serialized Event content
-func (e *Event) CreateEventId() []byte {
+// serializeTags serializes the tag field into JSON string format
+func (e *Event) serializeTags() []byte {
 	serialTags := []byte{'['}
 	for _, tag := range e.Tags {
 		if len(tag) != 0 {
@@ -39,6 +42,12 @@ func (e *Event) CreateEventId() []byte {
 	} else {
 		serialTags[len(serialTags)-1] = ']'
 	}
+	return serialTags[:]
+}
+
+// CreateEventId creates the EventId from the serialized Event content
+func (e *Event) CreateEventId() []byte {
+	serialTags := e.serializeTags()
 	serial := fmt.Sprintf("[0,\"%s\",%v,%v,%s,\"%s\"]", e.Pubkey, e.CreatedAt.Unix(), e.Kind, serialTags, e.Content)
 	hash := sha256.Sum256([]byte(serial))
 	return hash[:]
@@ -68,6 +77,29 @@ func (e *Event) ToBson() bson.D {
 // EventIdBsonFilter returns a BSON object for a filter which filters by event id
 func (e *Event) EventIdBsonFilter() bson.D {
 	return bson.D{{"event_id", e.EventId}}
+}
+
+// SignEvent creates a signature for the event and assigns the hex representation
+// of the signature to the Sig attribute
+func (e *Event) SignEvent(sk string) error {
+	skBytes, err := hex.DecodeString(sk)
+	if err != nil {
+		return err
+	}
+	pk, _ := btcec.PrivKeyFromBytes(skBytes)
+	sig, err := schnorr.Sign(pk, e.CreateEventId())
+	if err != nil {
+		return err
+	}
+	e.Sig = hex.EncodeToString(sig.Serialize())
+	return nil
+}
+
+// SerializeEvent transforms the event struct into a JSON string format
+func (e *Event) SerializeEvent() []byte {
+	// Start with tags
+	serializedTags := e.serializeTags()
+	return []byte(fmt.Sprintf("[\"EVENT\",{\"id\":\"%s\",\"pubkey\":\"%s\",\"created_at\":%v,\"kind\":%v,\"tags\":%s,\"content\":\"%s\",\"sig\":\"%s\"}]", e.EventId, e.Pubkey, e.CreatedAt.Unix(), e.Kind, serializedTags, e.Content, e.Sig))
 }
 
 type Filter struct {
