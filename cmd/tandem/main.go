@@ -1,7 +1,22 @@
 package main
 
-import "fmt"
+import (
+	"log"
+
+	"github.com/TheRebelOfBabylon/tandem/signal"
+)
 
 func main() {
-	fmt.Println("Hello World")
+	// Initialize SIGKILL handler
+	interruptHandler := signal.NewInterruptHandler()
+
+	// Read Config
+
+	// Setup Logging
+
+	// Initialize Connection to Database
+
+	// Start/Initialize HTTP Server
+	<-interruptHandler.ShutdownDoneChannel()
+	log.Println("shutdown complete")
 }
