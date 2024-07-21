@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -11,8 +12,9 @@ import (
 
 var (
 	formatLvlFunc = func(i interface{}) string {
-		return strings.ToUpper(fmt.Sprintf("| %-5s|", i))
+		return strings.ToUpper(fmt.Sprintf("| %s |", i))
 	}
+	ErrInvalidLogLevel = errors.New("invalid log level")
 )
 
 type Logger struct {
@@ -25,4 +27,20 @@ func NewLogger() Logger {
 	return Logger{
 		Logger: zerolog.New(output).With().Timestamp().Logger(),
 	}
+}
+
+// SetLogLevel sets the global log level
+func (log Logger) SetLogLevel(lvl string) (Logger, error) {
+	var newLogger Logger
+	switch lvl {
+	case "debug":
+		newLogger.Logger = log.Level(zerolog.DebugLevel)
+	case "info":
+		newLogger.Logger = log.Level(zerolog.InfoLevel)
+	case "error":
+		newLogger.Logger = log.Level(zerolog.ErrorLevel)
+	default:
+		return log, fmt.Errorf("%w: %s", ErrInvalidLogLevel, lvl)
+	}
+	return newLogger, nil
 }
