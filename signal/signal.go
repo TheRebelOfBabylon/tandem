@@ -1,10 +1,11 @@
 package signal
 
 import (
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/rs/zerolog"
 )
 
 var (
@@ -20,14 +21,16 @@ type InterruptHandler struct {
 	interruptChan chan os.Signal
 	quitChan      chan struct{}
 	doneChan      chan struct{}
+	logger        zerolog.Logger
 }
 
-// NewInterruptHanlder instatiates a new interrupt handler
-func NewInterruptHandler() *InterruptHandler {
+// NewInterruptHanlder instantiates a new interrupt handler
+func NewInterruptHandler(logger zerolog.Logger) *InterruptHandler {
 	ih := &InterruptHandler{
 		interruptChan: make(chan os.Signal),
 		quitChan:      make(chan struct{}),
 		doneChan:      make(chan struct{}),
+		logger:        logger,
 	}
 	signal.Notify(ih.interruptChan, signalsToCatch...)
 	go ih.mainHandler()
@@ -39,20 +42,20 @@ func (i *InterruptHandler) mainHandler() {
 	var isShutdown bool
 	shutdown := func() {
 		if isShutdown {
-			log.Println("already shutting down...")
+			i.logger.Warn().Msg("already shutting down...")
 			return
 		}
 		isShutdown = true
-		log.Println("beginning shutdown sequence...")
+		i.logger.Info().Msg("beginning shutdown sequence...")
 		close(i.quitChan)
 	}
 	for {
 		select {
 		case signal := <-i.interruptChan:
-			log.Printf("received %v", signal)
+			i.logger.Info().Msgf("received %v", signal)
 			shutdown()
 		case <-i.quitChan:
-			log.Println("gracefully shutting down...")
+			i.logger.Info().Msg("gracefully shutting down...")
 			signal.Stop(i.interruptChan)
 			close(i.doneChan)
 			return

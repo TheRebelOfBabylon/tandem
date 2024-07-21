@@ -1,22 +1,24 @@
 package main
 
 import (
-	"log"
-
+	"github.com/TheRebelOfBabylon/tandem/logging"
 	"github.com/TheRebelOfBabylon/tandem/signal"
 )
 
 func main() {
-	// Initialize SIGKILL handler
-	interruptHandler := signal.NewInterruptHandler()
+	// Initialize logging
+	logger := logging.NewLogger()
+
+	// Initialize signal handler
+	interruptHandler := signal.NewInterruptHandler(logger.With().Str("module", "interruptHandler").Logger())
 
 	// Read Config
 
-	// Setup Logging
+	// Configure Logging
 
 	// Initialize Connection to Database
 
 	// Start/Initialize HTTP Server
 	<-interruptHandler.ShutdownDoneChannel()
-	log.Println("shutdown complete")
+	logger.Info().Msg("shutdown complete")
 }
