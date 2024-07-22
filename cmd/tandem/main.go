@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"strings"
 
 	"github.com/TheRebelOfBabylon/tandem/config"
 	"github.com/TheRebelOfBabylon/tandem/logging"
@@ -29,11 +30,11 @@ func main() {
 	}
 
 	// configure Logging
-	logger, err = logger.SetLogLevel(cfg.Log.Level)
+	logger, err = logger.Configure(cfg.Log)
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to set log level")
 	}
-	logger.Info().Msgf("using log level %s", logger.GetLevel().String())
+	logger.Info().Msgf("using log level %s", strings.ToUpper(logger.GetLevel().String()))
 
 	// initialize signal handler
 	interruptHandler := signal.NewInterruptHandler(logger.With().Str("module", "interruptHandler").Logger())

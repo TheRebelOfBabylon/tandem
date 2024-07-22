@@ -20,7 +20,8 @@ var (
 )
 
 type Log struct {
-	Level string `toml:"level"`
+	Level       string `toml:"level"`
+	LogFilePath string `toml:"log_file_path"`
 }
 
 type Config struct {
