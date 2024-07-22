@@ -24,8 +24,14 @@ type Log struct {
 	LogFilePath string `toml:"log_file_path"`
 }
 
+type Storage struct {
+	Uri           string `toml:"uri"`
+	SkipTlsVerify bool   `toml:"skip_tls_verify"`
+}
+
 type Config struct {
-	Log Log `toml:"log"`
+	Log     Log     `toml:"log"`
+	Storage Storage `toml:"storage"`
 }
 
 // ReadConfig reads the given config file
