@@ -2,4 +2,4 @@
 level = "debug"
 
 [storage]
-uri = "edgedb://edgedb@localhost:5656/main"
+uri = "edgedb://edgedb@localhost:10701/main"
