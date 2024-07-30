@@ -5,9 +5,11 @@ import (
 	"strings"
 
 	"github.com/TheRebelOfBabylon/tandem/config"
+	"github.com/TheRebelOfBabylon/tandem/ingester"
 	"github.com/TheRebelOfBabylon/tandem/logging"
 	"github.com/TheRebelOfBabylon/tandem/signal"
 	"github.com/TheRebelOfBabylon/tandem/storage"
+	"github.com/TheRebelOfBabylon/tandem/websocket"
 )
 
 var (
@@ -50,7 +52,17 @@ func main() {
 	}
 	defer strorageBackend.Close()
 
-	// TODO - Start/Initialize HTTP Server
+	// initialize ingester
+	ingest := ingester.NewIngester(logger.With().Str("module", "ingester").Logger())
+	defer ingest.Close()
+
+	// initialize websocket handler
+	wsHandler := websocket.NewMainHandler(logger.With().Str("module", "websocketHandler").Logger(), ingest.SendChannel())
+	defer wsHandler.Close()
+
+	// ingester and websocket handler now communicating bi-directionally
+	ingest.SetRecvChannel(wsHandler.SendChannel())
+	// TODO - Start HTTP Server
 	<-interruptHandler.ShutdownDoneChannel()
 	logger.Info().Msg("shutdown complete")
 }
