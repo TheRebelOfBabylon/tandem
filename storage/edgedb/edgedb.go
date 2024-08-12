@@ -17,6 +17,7 @@ var (
 type EdgeDB struct {
 	edgedb.EdgeDBBackend
 	logger zerolog.Logger
+	// TODO - may need to add RWMutex since FilterManager will read potentially at the same time as DB is writing
 }
 
 // ConnectEdgeDB establishes the connection to edgedb
@@ -40,3 +41,5 @@ func ConnectEdgeDB(cfg config.Storage, logger zerolog.Logger) (*EdgeDB, error) {
 		logger:        logger,
 	}, nil
 }
+
+// TODO - Add a routine for receiving from ingester

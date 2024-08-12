@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/TheRebelOfBabylon/tandem/msg"
+	"github.com/nbd-wtf/go-nostr"
 	"github.com/rs/zerolog"
 )
 
@@ -43,6 +44,36 @@ func (i *Ingester) Start() error {
 	return nil
 }
 
+// ingestWorker is spun up as a go routine to parse, validate and verify new messages
+func (i *Ingester) ingestWorker(message msg.Msg) {
+	defer i.Done() // TODO - Can this go routine hang on channel send?
+	switch envelope := nostr.ParseMessage(message.Data).(type) {
+	case *nostr.EventEnvelope:
+		i.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("raw event: %v\n", envelope)
+		if ok, err := envelope.CheckSignature(); err != nil || !ok {
+			msgBytes, err := nostr.OKEnvelope{
+				EventID: envelope.ID,
+				OK:      false,
+				Reason:  "error: invalid event signature or event id",
+			}.MarshalJSON()
+			if err != nil {
+				i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
+			}
+			i.send <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
+		}
+		// send to db and filter manager
+	case *nostr.ReqEnvelope:
+		i.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("raw req: %v\n", envelope)
+		// send to filter manager
+	case *nostr.CloseEnvelope:
+		i.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("raw close: %v\n", envelope)
+		// send to filter manager
+	case nil:
+		// TODO - Should be banning IP addresses that abuse this and/or closing websocket connection
+		i.logger.Error().Str("connectionId", message.ConnectionId).Msg("failed to parse message, skipping")
+	}
+}
+
 // ingest is the goroutine which will receive messages over the recv channel and start up ingest workers
 func (i *Ingester) ingest() {
 	defer i.Done()
@@ -52,16 +83,15 @@ func (i *Ingester) ingest() {
 	}
 	for {
 		select {
-		case msg, ok := <-i.recv:
+		case message, ok := <-i.recv:
 			if !ok {
 				// handle
 			}
 			// TODO - remove this code
-			i.logger.Debug().Msgf("received from websocket handler: %v", msg)
-			i.send <- msg
-			// parse
-			// validate
-			// verify signature
+			i.logger.Debug().Msgf("received from websocket handler: %v", message)
+			// Spin up a worker go routine which will
+			i.Add(1)
+			go i.ingestWorker(message)
 		case <-i.quit:
 			i.logger.Info().Msg("stopping ingest routine...")
 			return

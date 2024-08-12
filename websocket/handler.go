@@ -74,7 +74,7 @@ func (m *websocketConnectionManager) read() {
 				m.logger.Err(err).Msg("failed to read message from websocket connection")
 				break
 			}
-			m.send <- msg.Msg{Id: m.id, Data: msgBytes}
+			m.send <- msg.Msg{ConnectionId: m.id, Data: msgBytes}
 		}
 	}
 }
@@ -89,7 +89,7 @@ loop:
 			if !ok {
 				// handle
 			}
-			if msg.Id != m.id {
+			if msg.ConnectionId != m.id {
 				m.logger.Warn().Msg("received message destined for a different connection manager. Ignoring...")
 				continue loop
 			}
@@ -170,9 +170,9 @@ loop:
 			if !ok {
 				// handle
 			}
-			chans, ok := h.connMgrChans[msg.Id]
+			chans, ok := h.connMgrChans[msg.ConnectionId]
 			if !ok {
-				h.logger.Warn().Msgf("connection manager with id %s not found in receive from ingester routine. Ignoring...")
+				h.logger.Warn().Msgf("connection manager with id %s not found in receive from ingester routine. Ignoring...", msg.ConnectionId)
 				continue loop
 			}
 			chans.Recv <- msg
