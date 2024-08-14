@@ -188,8 +188,8 @@ func (h *MainHandler) SendChannel() chan msg.Msg {
 	return h.send
 }
 
-// Close safely shutsdown the main websocket handler
-func (h *MainHandler) Close() error {
+// Stop safely shutsdown the main websocket handler
+func (h *MainHandler) Stop() error {
 	h.closing = true
 	close(h.quit) // shutdown receive from ingester routine first since it will send down connection manager channels
 	// stop connection managers

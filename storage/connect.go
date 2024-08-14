@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/TheRebelOfBabylon/tandem/config"
+	"github.com/TheRebelOfBabylon/tandem/msg"
 	"github.com/TheRebelOfBabylon/tandem/storage/edgedb"
 	"github.com/rs/zerolog"
 )
@@ -16,14 +17,14 @@ var (
 )
 
 // Connect establishes the connection to the given storage backend based on a URI
-func Connect(cfg config.Storage, logger zerolog.Logger) (StorageBackend, error) {
+func Connect(cfg config.Storage, logger zerolog.Logger, recv chan msg.ParsedMsg) (StorageBackend, error) {
 	parts := strings.Split(cfg.Uri, "://")
 	if len(parts) != 2 {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidStorageUri, cfg.Uri)
 	}
 	switch parts[0] {
 	case "edgedb":
-		return edgedb.ConnectEdgeDB(cfg, logger)
+		return edgedb.ConnectEdgeDB(cfg, logger, recv)
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedBackend, parts[0])
 	}

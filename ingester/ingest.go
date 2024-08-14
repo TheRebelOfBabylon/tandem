@@ -16,25 +16,27 @@ var (
 // TODO - Ingester needs to communicate with storage backend
 // TODO - create ingester workers for communicating with storage backend,
 type Ingester struct {
-	logger zerolog.Logger
-	recv   chan msg.Msg
-	send   chan msg.Msg
-	quit   chan struct{}
+	logger            zerolog.Logger
+	recvFromWSHandler chan msg.Msg
+	sendToWSHandler   chan msg.Msg
+	sendToDB          chan msg.ParsedMsg
+	quit              chan struct{}
 	sync.WaitGroup
 }
 
 // NewIngester instantiates the ingester
 func NewIngester(logger zerolog.Logger) *Ingester {
 	return &Ingester{
-		logger: logger,
-		send:   make(chan msg.Msg),
-		quit:   make(chan struct{}),
+		logger:          logger,
+		sendToWSHandler: make(chan msg.Msg),
+		sendToDB:        make(chan msg.ParsedMsg),
+		quit:            make(chan struct{}),
 	}
 }
 
 // SetRecvChannel stores the receive channel (from the Websocket Handler) in the Ingester data structure for use in the ingest go routine
 func (i *Ingester) SetRecvChannel(recv chan msg.Msg) {
-	i.recv = recv
+	i.recvFromWSHandler = recv
 }
 
 // Start starts the ingest routine
@@ -59,7 +61,7 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 			if err != nil {
 				i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
 			}
-			i.send <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
+			i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
 		}
 		// send to db and filter manager
 	case *nostr.ReqEnvelope:
@@ -77,13 +79,13 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 // ingest is the goroutine which will receive messages over the recv channel and start up ingest workers
 func (i *Ingester) ingest() {
 	defer i.Done()
-	if i.recv == nil {
+	if i.recvFromWSHandler == nil {
 		i.logger.Fatal().Err(ErrRecvChanNotSet).Msg("failed to start ingest routine")
 		return
 	}
 	for {
 		select {
-		case message, ok := <-i.recv:
+		case message, ok := <-i.recvFromWSHandler:
 			if !ok {
 				// handle
 			}
@@ -99,15 +101,21 @@ func (i *Ingester) ingest() {
 	}
 }
 
-// SendChannel is a wrapper over the send channel to safely pass along the channel to those who need it
-func (i *Ingester) SendChannel() chan msg.Msg {
-	return i.send
+// SendToWSHandlerChannel is a wrapper over the send to Websocket Handler channel to safely pass along the channel to those who need it
+func (i *Ingester) SendToWSHandlerChannel() chan msg.Msg {
+	return i.sendToWSHandler
 }
 
-// Close safely shuts down the ingester
-func (i *Ingester) Close() error {
-	close(i.send)
+// SendToDBChannel is a wrapper over the send to DB channel to safely pass along the channel to those who need it
+func (i *Ingester) SendToDBChannel() chan msg.ParsedMsg {
+	return i.sendToDB
+}
+
+// Stop safely shuts down the ingester
+func (i *Ingester) Stop() error {
 	close(i.quit)
 	i.Wait()
+	close(i.sendToWSHandler)
+	close(i.sendToDB)
 	return nil
 }

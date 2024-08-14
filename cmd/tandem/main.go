@@ -44,21 +44,21 @@ func main() {
 	// initialize signal handler
 	interruptHandler := signal.NewInterruptHandler(logger.With().Str("module", "interruptHandler").Logger())
 
+	// initialize ingester
+	ingest := ingester.NewIngester(logger.With().Str("module", "ingester").Logger())
+	defer ingest.Stop()
+
 	// initialize connection to storage backend
 	logger.Info().Msg("initializing connection to storage backend...")
-	strorageBackend, err := storage.Connect(cfg.Storage, logger.With().Str("module", "storageBackend").Logger())
+	storageBackend, err := storage.Connect(cfg.Storage, logger.With().Str("module", "storageBackend").Logger(), ingest.SendToDBChannel())
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to connect to storage backend")
 	}
-	defer strorageBackend.Close()
-
-	// initialize ingester
-	ingest := ingester.NewIngester(logger.With().Str("module", "ingester").Logger())
-	defer ingest.Close()
+	defer storageBackend.Stop()
 
 	// initialize websocket handler
-	wsHandler := websocket.NewMainHandler(logger.With().Str("module", "websocketHandler").Logger(), ingest.SendChannel())
-	defer wsHandler.Close()
+	wsHandler := websocket.NewMainHandler(logger.With().Str("module", "websocketHandler").Logger(), ingest.SendToWSHandlerChannel())
+	defer wsHandler.Stop()
 
 	// ingester and websocket handler now communicating bi-directionally
 	ingest.SetRecvChannel(wsHandler.SendChannel())

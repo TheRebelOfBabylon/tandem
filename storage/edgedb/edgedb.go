@@ -1,8 +1,14 @@
 package edgedb
 
 import (
+	"context"
+	"errors"
+	"sync"
+
 	"github.com/TheRebelOfBabylon/eventstore/edgedb"
 	"github.com/TheRebelOfBabylon/tandem/config"
+	"github.com/TheRebelOfBabylon/tandem/msg"
+	"github.com/nbd-wtf/go-nostr"
 	"github.com/rs/zerolog"
 )
 
@@ -12,16 +18,20 @@ var (
 	queryKindsLimit   = 100
 	queryTagsLimit    = 100
 	queryLimit        = 100
+	ErrRecvChanNotSet = errors.New("receive channel not set")
 )
 
 type EdgeDB struct {
 	edgedb.EdgeDBBackend
 	logger zerolog.Logger
+	recv   chan msg.ParsedMsg
+	quit   chan struct{}
+	sync.WaitGroup
 	// TODO - may need to add RWMutex since FilterManager will read potentially at the same time as DB is writing
 }
 
 // ConnectEdgeDB establishes the connection to edgedb
-func ConnectEdgeDB(cfg config.Storage, logger zerolog.Logger) (*EdgeDB, error) {
+func ConnectEdgeDB(cfg config.Storage, logger zerolog.Logger, recv chan msg.ParsedMsg) (*EdgeDB, error) {
 	backend := edgedb.EdgeDBBackend{
 		DatabaseURI:       cfg.Uri,
 		TLSSkipVerify:     cfg.SkipTlsVerify,
@@ -39,7 +49,49 @@ func ConnectEdgeDB(cfg config.Storage, logger zerolog.Logger) (*EdgeDB, error) {
 	return &EdgeDB{
 		EdgeDBBackend: backend,
 		logger:        logger,
+		recv:          recv,
+		quit:          make(chan struct{}),
 	}, nil
 }
 
 // TODO - Add a routine for receiving from ingester
+func (e *EdgeDB) Start() error {
+	e.Add(1)
+	go e.ReceiveFromIngester(e.recv)
+	return nil
+}
+
+// ReceiveFromIngester is a go-routine for receiving new events from the ingester and storing them in the db
+func (e *EdgeDB) ReceiveFromIngester(recv chan msg.ParsedMsg) {
+	defer e.Done()
+	if recv == nil {
+		e.logger.Error().Err(ErrRecvChanNotSet).Msg("failed to start receive from ingester routine")
+		return
+	}
+	for {
+		select {
+		case <-e.quit:
+			e.logger.Info().Msg("exiting from ingester routine")
+			return
+		case message, ok := <-recv:
+			if !ok {
+				// TODO - handle
+			}
+			switch envelope := message.Data.(type) {
+			case *nostr.EventEnvelope:
+				if err := e.SaveEvent(context.TODO(), &envelope.Event); err != nil {
+					e.logger.Fatal().Err(err).Msg("failed to store event")
+				}
+			default:
+				e.logger.Warn().Msgf("invalid type %T for message, skipping...", message.Data)
+			}
+		}
+	}
+}
+
+func (e *EdgeDB) Stop() error {
+	close(e.quit)
+	e.Wait()
+	e.Close()
+	return nil
+}

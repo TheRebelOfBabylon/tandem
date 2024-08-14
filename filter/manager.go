@@ -167,8 +167,8 @@ func (f *FilterManager) manage() {
 
 // Stop safely stops the FilterManager instance
 func (f *FilterManager) Stop() error {
-	close(f.sendToWSHandler)
 	close(f.quit)
 	f.Wait()
+	close(f.sendToWSHandler)
 	return nil
 }
