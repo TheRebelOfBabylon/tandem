@@ -8,6 +8,7 @@ import (
 	"github.com/TheRebelOfBabylon/tandem/config"
 	"github.com/TheRebelOfBabylon/tandem/msg"
 	"github.com/TheRebelOfBabylon/tandem/storage/edgedb"
+	"github.com/TheRebelOfBabylon/tandem/storage/memory"
 	"github.com/rs/zerolog"
 )
 
@@ -25,6 +26,8 @@ func Connect(cfg config.Storage, logger zerolog.Logger, recv chan msg.ParsedMsg)
 	switch parts[0] {
 	case "edgedb":
 		return edgedb.ConnectEdgeDB(cfg, logger, recv)
+	case "memory":
+		return memory.ConnectMemory(cfg, logger, recv)
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedBackend, parts[0])
 	}

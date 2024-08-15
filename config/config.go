@@ -17,7 +17,14 @@ var (
 	}
 	defaultLogLvl      = "info"
 	ErrInvalidLogLevel = errors.New("invalid log level")
+	defaultAddress     = "localhost"
+	defaultPort        = 5000
 )
+
+type HTTP struct {
+	Address string `toml:"address"`
+	Port    int    `toml:"port"`
+}
 
 type Log struct {
 	Level       string `toml:"level"`
@@ -30,6 +37,7 @@ type Storage struct {
 }
 
 type Config struct {
+	HTTP    HTTP    `toml:"http"`
 	Log     Log     `toml:"log"`
 	Storage Storage `toml:"storage"`
 }
@@ -55,6 +63,12 @@ func (c *Config) Validate() error {
 	}
 	if !slices.Contains(validLogLvls, c.Log.Level) {
 		return fmt.Errorf("%w: %s", ErrInvalidLogLevel, c.Log.Level)
+	}
+	if c.HTTP.Address == "" {
+		c.HTTP.Address = defaultAddress
+	}
+	if c.HTTP.Port == 0 {
+		c.HTTP.Port = defaultPort
 	}
 	return nil
 }

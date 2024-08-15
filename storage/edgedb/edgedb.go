@@ -71,7 +71,7 @@ func (e *EdgeDB) ReceiveFromIngester(recv chan msg.ParsedMsg) {
 	for {
 		select {
 		case <-e.quit:
-			e.logger.Info().Msg("exiting from ingester routine")
+			e.logger.Info().Msg("exiting from receive from ingester routine")
 			return
 		case message, ok := <-recv:
 			if !ok {
