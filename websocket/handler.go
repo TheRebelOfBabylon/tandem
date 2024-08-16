@@ -1,8 +1,8 @@
 package websocket
 
 import (
+	"errors"
 	"net/http"
-	"sync"
 
 	"github.com/TheRebelOfBabylon/tandem/msg"
 	"github.com/google/uuid"
@@ -10,24 +10,17 @@ import (
 	"github.com/rs/zerolog"
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-}
+var (
+	upgrader = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+	}
+	ErrRecvChanNotSet = errors.New("receive channel not set")
+)
 
 type ConnMgrChannels struct {
 	Recv chan msg.Msg
 	Quit chan struct{}
-}
-
-type MainHandler struct {
-	logger       zerolog.Logger
-	recv         chan msg.Msg
-	send         chan msg.Msg
-	quit         chan struct{}
-	connMgrChans map[string]ConnMgrChannels
-	closing      bool
-	sync.WaitGroup
 }
 
 type websocketConnectionManager struct {
@@ -104,26 +97,8 @@ loop:
 	}
 }
 
-// NewMainHandler instantiates a new main handler
-func NewMainHandler(logger zerolog.Logger, recv chan msg.Msg) *MainHandler {
-	return &MainHandler{
-		logger:       logger,
-		recv:         recv,
-		send:         make(chan msg.Msg),
-		quit:         make(chan struct{}),
-		connMgrChans: make(map[string]ConnMgrChannels),
-	}
-}
-
-// Start starts the main handler go routines
-func (h *MainHandler) Start() error {
-	h.closing = false // just doing this to be safe
-	go h.recvFromIngester()
-	return nil
-}
-
 // websocketHandler is the main handler for the initial request to connect via websockets
-func (h *MainHandler) websocketHandler(w http.ResponseWriter, r *http.Request) {
+func (h *WebsocketServer) websocketHandler(w http.ResponseWriter, r *http.Request) {
 	// prevent accepting new connections when shutting down
 	if h.closing {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -160,20 +135,33 @@ func (h *MainHandler) websocketHandler(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
-// recvFromIngester is a goroutine to receive new messages from the ingester
-func (h *MainHandler) recvFromIngester() {
+// recv is a goroutine to receive new messages from the ingester and filter manager
+func (h *WebsocketServer) recv() {
 	defer h.Done()
+	if h.recvFromIngester == nil || h.recvFromFilterMgr == nil {
+		h.logger.Error().Err(ErrRecvChanNotSet).Msg("failed to start receive routine")
+		return
+	}
 loop:
 	for {
 		select {
-		case msg, ok := <-h.recv:
+		case msg, ok := <-h.recvFromIngester:
 			if !ok {
-				// handle
+				// TODO - handle
 			}
 			chans, ok := h.connMgrChans[msg.ConnectionId]
 			if !ok {
 				h.logger.Warn().Msgf("connection manager with id %s not found in receive from ingester routine. Ignoring...", msg.ConnectionId)
 				continue loop
+			}
+			chans.Recv <- msg
+		case msg, ok := <-h.recvFromFilterMgr:
+			if !ok {
+				// TODO - handle
+			}
+			chans, ok := h.connMgrChans[msg.ConnectionId]
+			if !ok {
+				h.logger.Warn().Msgf("connection manager with id %s not found in receive from filter manager routine. Ignoring...", msg.ConnectionId)
 			}
 			chans.Recv <- msg
 		case <-h.quit:
@@ -184,20 +172,6 @@ loop:
 }
 
 // SendChannel is a getter function to get the websocket handlers send channel
-func (h *MainHandler) SendChannel() chan msg.Msg {
+func (h *WebsocketServer) SendChannel() chan msg.Msg {
 	return h.send
-}
-
-// Stop safely shutsdown the main websocket handler
-func (h *MainHandler) Stop() error {
-	h.closing = true
-	close(h.quit) // shutdown receive from ingester routine first since it will send down connection manager channels
-	// stop connection managers
-	for _, chans := range h.connMgrChans {
-		close(chans.Quit)
-		close(chans.Recv)
-	}
-	h.Wait()
-	close(h.send) // shut this down last to be safe
-	return nil
 }

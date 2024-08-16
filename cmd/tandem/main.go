@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/TheRebelOfBabylon/tandem/config"
+	"github.com/TheRebelOfBabylon/tandem/filter"
 	"github.com/TheRebelOfBabylon/tandem/ingester"
 	"github.com/TheRebelOfBabylon/tandem/logging"
 	"github.com/TheRebelOfBabylon/tandem/signal"
@@ -56,13 +57,17 @@ func main() {
 	}
 	defer storageBackend.Stop()
 
+	// initialize filter manager
+	filterManager := filter.NewFilterManager(ingest.SendToFilterManager(), storageBackend, logger.With().Str("module", "filterManager").Logger())
+	defer filterManager.Stop()
+
 	// initialize websocket handler
-	wsHandler := websocket.NewMainHandler(logger.With().Str("module", "websocketHandler").Logger(), ingest.SendToWSHandlerChannel())
+	wsHandler := websocket.NewWebsocketServer(cfg.HTTP, logger.With().Str("module", "websocketHandler").Logger(), ingest.SendToWSHandlerChannel(), filterManager.SendChannel())
 	defer wsHandler.Stop()
 
 	// ingester and websocket handler now communicating bi-directionally
 	ingest.SetRecvChannel(wsHandler.SendChannel())
-	// TODO - Start HTTP Server
+	// TODO - Create a slice to hold all components that can be started and stopped and start them all at once, in proper order
 	<-interruptHandler.ShutdownDoneChannel()
 	logger.Info().Msg("shutdown complete")
 }

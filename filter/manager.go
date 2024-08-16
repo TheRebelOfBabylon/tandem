@@ -172,3 +172,8 @@ func (f *FilterManager) Stop() error {
 	close(f.sendToWSHandler)
 	return nil
 }
+
+// SendChannel is wrapper around the send channel to the websocket handler
+func (f *FilterManager) SendChannel() chan msg.Msg {
+	return f.sendToWSHandler
+}

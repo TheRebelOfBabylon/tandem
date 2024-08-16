@@ -20,6 +20,7 @@ type Ingester struct {
 	recvFromWSHandler chan msg.Msg
 	sendToWSHandler   chan msg.Msg
 	sendToDB          chan msg.ParsedMsg
+	sendToFilterMgr   chan msg.ParsedMsg
 	quit              chan struct{}
 	sync.WaitGroup
 }
@@ -30,6 +31,7 @@ func NewIngester(logger zerolog.Logger) *Ingester {
 		logger:          logger,
 		sendToWSHandler: make(chan msg.Msg),
 		sendToDB:        make(chan msg.ParsedMsg),
+		sendToFilterMgr: make(chan msg.ParsedMsg),
 		quit:            make(chan struct{}),
 	}
 }
@@ -111,11 +113,17 @@ func (i *Ingester) SendToDBChannel() chan msg.ParsedMsg {
 	return i.sendToDB
 }
 
+// SendToFilterManager is a wrapper over the send to Filter Manager channel to safely pass along the channel to those who need it
+func (i *Ingester) SendToFilterManager() chan msg.ParsedMsg {
+	return i.sendToFilterMgr
+}
+
 // Stop safely shuts down the ingester
 func (i *Ingester) Stop() error {
 	close(i.quit)
 	i.Wait()
 	close(i.sendToWSHandler)
 	close(i.sendToDB)
+	close(i.sendToFilterMgr)
 	return nil
 }

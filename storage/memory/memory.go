@@ -39,11 +39,11 @@ func ConnectMemory(cfg config.Storage, logger zerolog.Logger, recv chan msg.Pars
 
 func (m *Memory) Start() error {
 	m.Add(1)
-	go m.ReceiveFromIngester(m.recv)
+	go m.receiveFromIngester(m.recv)
 	return nil
 }
 
-func (m *Memory) ReceiveFromIngester(recv chan msg.ParsedMsg) {
+func (m *Memory) receiveFromIngester(recv chan msg.ParsedMsg) {
 	defer m.Done()
 	if recv == nil {
 		m.logger.Error().Err(ErrRecvChanNotSet).Msg("failed to start receive from ingester routine")

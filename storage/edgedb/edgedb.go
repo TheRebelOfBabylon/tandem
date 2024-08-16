@@ -57,12 +57,12 @@ func ConnectEdgeDB(cfg config.Storage, logger zerolog.Logger, recv chan msg.Pars
 // TODO - Add a routine for receiving from ingester
 func (e *EdgeDB) Start() error {
 	e.Add(1)
-	go e.ReceiveFromIngester(e.recv)
+	go e.receiveFromIngester(e.recv)
 	return nil
 }
 
 // ReceiveFromIngester is a go-routine for receiving new events from the ingester and storing them in the db
-func (e *EdgeDB) ReceiveFromIngester(recv chan msg.ParsedMsg) {
+func (e *EdgeDB) receiveFromIngester(recv chan msg.ParsedMsg) {
 	defer e.Done()
 	if recv == nil {
 		e.logger.Error().Err(ErrRecvChanNotSet).Msg("failed to start receive from ingester routine")
