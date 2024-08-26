@@ -55,17 +55,18 @@ func newWebsocketConnectionManager(
 
 // read is the goroutine responsible for handling new incoming messages from the websocket connection and sending them to the ingester
 func (m *websocketConnectionManager) read() {
+	// TODO - need to notify filter manager to close any subscriptions associated with this connection
+	defer close(m.quitWrite)
 	for {
 		select {
 		case <-m.quit:
 			m.logger.Info().Msg("exiting read routine...")
-			close(m.quitWrite)
 			return
 		default:
 			_, msgBytes, err := m.conn.ReadMessage()
 			if err != nil {
-				m.logger.Err(err).Msg("failed to read message from websocket connection")
-				break
+				m.logger.Error().Err(err).Msg("failed to read message from websocket connection")
+				return
 			}
 			m.send <- msg.Msg{ConnectionId: m.id, Data: msgBytes}
 		}
@@ -100,7 +101,7 @@ loop:
 // websocketHandler is the main handler for the initial request to connect via websockets
 func (h *WebsocketServer) websocketHandler(w http.ResponseWriter, r *http.Request) {
 	// prevent accepting new connections when shutting down
-	if h.closing {
+	if h.isClosing() {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
@@ -146,6 +147,7 @@ loop:
 	for {
 		select {
 		case msg, ok := <-h.recvFromIngester:
+			h.logger.Debug().Msgf("received from ingester: %v", msg)
 			if !ok {
 				// TODO - handle
 			}
@@ -156,6 +158,7 @@ loop:
 			}
 			chans.Recv <- msg
 		case msg, ok := <-h.recvFromFilterMgr:
+			h.logger.Debug().Msgf("received from filter manager: %v", msg)
 			if !ok {
 				// TODO - handle
 			}

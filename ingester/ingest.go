@@ -43,12 +43,15 @@ func (i *Ingester) SetRecvChannel(recv chan msg.Msg) {
 
 // Start starts the ingest routine
 func (i *Ingester) Start() error {
+	i.logger.Info().Msg("starting up...")
 	i.Add(1)
 	go i.ingest()
+	i.logger.Info().Msg("start up completed")
 	return nil
 }
 
 // ingestWorker is spun up as a go routine to parse, validate and verify new messages
+// TODO - Add a timeout to this goroutine
 func (i *Ingester) ingestWorker(message msg.Msg) {
 	defer i.Done() // TODO - Can this go routine hang on channel send?
 	switch envelope := nostr.ParseMessage(message.Data).(type) {
@@ -65,13 +68,28 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 			}
 			i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
 		}
+		// send OK message
+		// TODO - Should only send OK after DB accepts/rejects event
+		msgBytes, err := nostr.OKEnvelope{
+			EventID: envelope.ID,
+			OK:      true,
+			Reason:  "",
+		}.MarshalJSON()
+		if err != nil {
+			i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
+		}
+		i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
 		// send to db and filter manager
+		i.sendToDB <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
+		i.sendToFilterMgr <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
 	case *nostr.ReqEnvelope:
 		i.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("raw req: %v\n", envelope)
 		// send to filter manager
+		i.sendToFilterMgr <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
 	case *nostr.CloseEnvelope:
 		i.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("raw close: %v\n", envelope)
 		// send to filter manager
+		i.sendToFilterMgr <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
 	case nil:
 		// TODO - Should be banning IP addresses that abuse this and/or closing websocket connection
 		i.logger.Error().Str("connectionId", message.ConnectionId).Msg("failed to parse message, skipping")
@@ -93,7 +111,7 @@ func (i *Ingester) ingest() {
 			}
 			// TODO - remove this code
 			i.logger.Debug().Msgf("received from websocket handler: %v", message)
-			// Spin up a worker go routine which will
+			// Spin up a worker go routine which will ingest the message
 			i.Add(1)
 			go i.ingestWorker(message)
 		case <-i.quit:
@@ -120,10 +138,12 @@ func (i *Ingester) SendToFilterManager() chan msg.ParsedMsg {
 
 // Stop safely shuts down the ingester
 func (i *Ingester) Stop() error {
+	i.logger.Info().Msg("shutting down...")
 	close(i.quit)
 	i.Wait()
 	close(i.sendToWSHandler)
 	close(i.sendToDB)
 	close(i.sendToFilterMgr)
+	i.logger.Info().Msg("shutdown completed")
 	return nil
 }

@@ -13,8 +13,28 @@ import (
 	"github.com/TheRebelOfBabylon/tandem/websocket"
 )
 
+type Module interface {
+	Start() error
+	Stop() error
+}
+
 var (
 	cfgFilePath = flag.String("config", "tandem.toml", "path to the TOML config file")
+	modules     = []Module{}
+	stopModules = func(logger logging.Logger) {
+		for _, m := range modules {
+			if err := m.Stop(); err != nil {
+				logger.Fatal().Err(err).Msg("failed to safely shutdown")
+			}
+		}
+	}
+	startModules = func(logger logging.Logger) {
+		for _, m := range modules {
+			if err := m.Start(); err != nil {
+				logger.Fatal().Err(err).Msg("failed to start modules")
+			}
+		}
+	}
 )
 
 func main() {
@@ -46,8 +66,9 @@ func main() {
 	interruptHandler := signal.NewInterruptHandler(logger.With().Str("module", "interruptHandler").Logger())
 
 	// initialize ingester
+	logger.Info().Msg("initializing ingester...")
 	ingest := ingester.NewIngester(logger.With().Str("module", "ingester").Logger())
-	defer ingest.Stop()
+	modules = append(modules, ingest)
 
 	// initialize connection to storage backend
 	logger.Info().Msg("initializing connection to storage backend...")
@@ -55,19 +76,29 @@ func main() {
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to connect to storage backend")
 	}
-	defer storageBackend.Stop()
+	modules = append(modules, storageBackend)
 
 	// initialize filter manager
+	logger.Info().Msg("initializing filter manager...")
 	filterManager := filter.NewFilterManager(ingest.SendToFilterManager(), storageBackend, logger.With().Str("module", "filterManager").Logger())
-	defer filterManager.Stop()
+	modules = append(modules, filterManager)
 
 	// initialize websocket handler
-	wsHandler := websocket.NewWebsocketServer(cfg.HTTP, logger.With().Str("module", "websocketHandler").Logger(), ingest.SendToWSHandlerChannel(), filterManager.SendChannel())
-	defer wsHandler.Stop()
+	logger.Info().Msg("initializing websocket server...")
+	wsHandler := websocket.NewWebsocketServer(cfg.HTTP, logger.With().Str("module", "websocketServer").Logger(), ingest.SendToWSHandlerChannel(), filterManager.SendChannel())
+	modules = append(modules, wsHandler)
 
 	// ingester and websocket handler now communicating bi-directionally
 	ingest.SetRecvChannel(wsHandler.SendChannel())
-	// TODO - Create a slice to hold all components that can be started and stopped and start them all at once, in proper order
+
+	// start modules
+	logger.Info().Msg("starting modules...")
+	startModules(logger)
+
+	// hang until we shutdown
 	<-interruptHandler.ShutdownDoneChannel()
+
+	// shutdown
+	stopModules(logger)
 	logger.Info().Msg("shutdown complete")
 }

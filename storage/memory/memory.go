@@ -38,8 +38,10 @@ func ConnectMemory(cfg config.Storage, logger zerolog.Logger, recv chan msg.Pars
 }
 
 func (m *Memory) Start() error {
+	m.logger.Info().Msg("starting up...")
 	m.Add(1)
 	go m.receiveFromIngester(m.recv)
+	m.logger.Info().Msg("start up completed")
 	return nil
 }
 
@@ -71,8 +73,10 @@ func (m *Memory) receiveFromIngester(recv chan msg.ParsedMsg) {
 }
 
 func (m *Memory) Stop() error {
+	m.logger.Info().Msg("shutting down...")
 	close(m.quit)
 	m.Wait()
 	m.Close()
+	m.logger.Info().Msg("shutdown completed")
 	return nil
 }
