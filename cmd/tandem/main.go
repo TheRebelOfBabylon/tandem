@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"slices"
 	"strings"
 
 	"github.com/TheRebelOfBabylon/tandem/config"
@@ -22,6 +23,7 @@ var (
 	cfgFilePath = flag.String("config", "tandem.toml", "path to the TOML config file")
 	modules     = []Module{}
 	stopModules = func(logger logging.Logger) {
+		slices.Reverse(modules) // we shut down in reverse order
 		for _, m := range modules {
 			if err := m.Stop(); err != nil {
 				logger.Fatal().Err(err).Msg("failed to safely shutdown")

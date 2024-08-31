@@ -11,6 +11,7 @@ import (
 
 var (
 	ErrRecvChanNotSet = errors.New("receive channel not set")
+	ErrSubIdTooLarge  = errors.New("subscription id too large")
 )
 
 // TODO - Ingester needs to communicate with storage backend
@@ -22,7 +23,9 @@ type Ingester struct {
 	sendToDB          chan msg.ParsedMsg
 	sendToFilterMgr   chan msg.ParsedMsg
 	quit              chan struct{}
+	stopping          bool
 	sync.WaitGroup
+	sync.RWMutex
 }
 
 // NewIngester instantiates the ingester
@@ -33,6 +36,7 @@ func NewIngester(logger zerolog.Logger) *Ingester {
 		sendToDB:        make(chan msg.ParsedMsg),
 		sendToFilterMgr: make(chan msg.ParsedMsg),
 		quit:            make(chan struct{}),
+		stopping:        false,
 	}
 }
 
@@ -67,6 +71,7 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 				i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
 			}
 			i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
+			return
 		}
 		// send OK message
 		// TODO - Should only send OK after DB accepts/rejects event
@@ -83,6 +88,19 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 		i.sendToDB <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
 		i.sendToFilterMgr <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
 	case *nostr.ReqEnvelope:
+		// enforce subid being 64 characters in length
+		if len(envelope.SubscriptionID) > 64 {
+			i.logger.Error().Err(ErrSubIdTooLarge).Str("connectionId", message.ConnectionId).Msg("rejecting REQ")
+			msgBytes, err := nostr.ClosedEnvelope{
+				SubscriptionID: envelope.SubscriptionID,
+				Reason:         "error: subscription id too large",
+			}.MarshalJSON()
+			if err != nil {
+				i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
+			}
+			i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
+			return
+		}
 		i.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("raw req: %v\n", envelope)
 		// send to filter manager
 		i.sendToFilterMgr <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
@@ -103,14 +121,20 @@ func (i *Ingester) ingest() {
 		i.logger.Fatal().Err(ErrRecvChanNotSet).Msg("failed to start ingest routine")
 		return
 	}
+loop:
 	for {
 		select {
 		case message, ok := <-i.recvFromWSHandler:
-			if !ok {
-				// handle
+			if !ok && !i.isStopping() {
+				i.logger.Warn().Msg("receive from websocket handler channel unexpectedely closed") // TODO - somehow fix this
+				return
+			} else if !ok && i.isStopping() {
+				continue loop
 			}
-			// TODO - remove this code
-			i.logger.Debug().Msgf("received from websocket handler: %v", message)
+			if message.CloseConn {
+				i.sendToFilterMgr <- msg.ParsedMsg{ConnectionId: message.ConnectionId, CloseConn: true}
+				continue loop
+			}
 			// Spin up a worker go routine which will ingest the message
 			i.Add(1)
 			go i.ingestWorker(message)
@@ -136,9 +160,24 @@ func (i *Ingester) SendToFilterManager() chan msg.ParsedMsg {
 	return i.sendToFilterMgr
 }
 
+// toggleStopping sets the stopping state accordingly
+func (i *Ingester) toggleStopping(state bool) {
+	i.Lock()
+	defer i.Unlock()
+	i.stopping = state
+}
+
+// isStopping checks if the ingester is currently stopping
+func (i *Ingester) isStopping() bool {
+	i.RLock()
+	defer i.RUnlock()
+	return i.stopping
+}
+
 // Stop safely shuts down the ingester
 func (i *Ingester) Stop() error {
 	i.logger.Info().Msg("shutting down...")
+	i.toggleStopping(true)
 	close(i.quit)
 	i.Wait()
 	close(i.sendToWSHandler)

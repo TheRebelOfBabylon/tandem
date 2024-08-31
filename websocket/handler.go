@@ -56,7 +56,10 @@ func newWebsocketConnectionManager(
 // read is the goroutine responsible for handling new incoming messages from the websocket connection and sending them to the ingester
 func (m *websocketConnectionManager) read() {
 	// TODO - need to notify filter manager to close any subscriptions associated with this connection
-	defer close(m.quitWrite)
+	defer func() {
+		m.send <- msg.Msg{ConnectionId: m.id, CloseConn: true}
+		close(m.quitWrite)
+	}()
 	for {
 		select {
 		case <-m.quit:
@@ -64,7 +67,10 @@ func (m *websocketConnectionManager) read() {
 			return
 		default:
 			_, msgBytes, err := m.conn.ReadMessage()
-			if err != nil {
+			if err != nil && websocket.IsCloseError(err, websocket.CloseAbnormalClosure) {
+				m.logger.Info().Msg("exiting read routine...")
+				return
+			} else if err != nil {
 				m.logger.Error().Err(err).Msg("failed to read message from websocket connection")
 				return
 			}
@@ -87,6 +93,7 @@ loop:
 				m.logger.Warn().Msg("received message destined for a different connection manager. Ignoring...")
 				continue loop
 			}
+			m.logger.Debug().Msgf("sending to client: %v", string(msg.Data))
 			if err := m.conn.WriteMessage(websocket.TextMessage, msg.Data); err != nil {
 				m.logger.Error().Err(err).Msg("failed to send message over websocket connection")
 				return

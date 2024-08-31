@@ -141,11 +141,18 @@ func (f *FilterManager) manage() {
 		f.logger.Error().Err(ErrIngesterRecvNotSet).Msg("failed to start filter management routine")
 		return
 	}
+loop:
 	for {
 		select {
 		case message, ok := <-f.recvFromIngester:
 			if !ok {
-				// TODO - handle
+				f.logger.Fatal().Msg("receive from ingester channel unexpectedely closed")
+			}
+			if message.CloseConn {
+				// connection is closed so remove all subscriptions
+				f.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("closing all subscriptions")
+				f.endConnection(message.ConnectionId)
+				continue loop
 			}
 			switch envelope := message.Data.(type) {
 			case *nostr.EventEnvelope:
@@ -166,12 +173,17 @@ func (f *FilterManager) manage() {
 					for {
 						select {
 						case event, ok := <-rcvChan:
-							f.logger.Debug().Msgf("received from storage backend: %v", event)
+							f.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("received from storage backend: %v", event)
 							if !ok {
 								break innerLoop
 							}
-							f.logger.Debug().Msgf("sending to websocket server: %v", event)
-							f.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: event.Serialize()}
+							eventEnv := nostr.EventEnvelope{SubscriptionID: &envelope.SubscriptionID, Event: *event}
+							eventBytes, err := eventEnv.MarshalJSON()
+							if err != nil {
+								f.logger.Fatal().Err(err).Msg("failed to marshal event")
+							}
+							f.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("sending to websocket server: %v", event)
+							f.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: eventBytes}
 						case <-timeOut.C:
 							f.logger.Warn().Str("connectionId", message.ConnectionId).Msgf("timeout reading all messages queried for this filter: %s", filter.String())
 							break innerLoop
@@ -180,9 +192,9 @@ func (f *FilterManager) manage() {
 				}
 				// send EOSE
 				f.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: []byte(fmt.Sprintf(`["EOSE", "%s"]`, envelope.SubscriptionID))}
-				f.logger.Debug().Msgf("registering new subscription with id %v...", envelope.SubscriptionID)
+				f.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("registering new subscription with id %v...", envelope.SubscriptionID)
 				f.addSubscription(message.ConnectionId, envelope)
-				f.logger.Debug().Msgf("new subscription with id %v registered", envelope.SubscriptionID)
+				f.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("new subscription with id %v registered", envelope.SubscriptionID)
 			case *nostr.CloseEnvelope:
 				if f.contains(message.ConnectionId, string(*envelope)) {
 					// remove it from our map

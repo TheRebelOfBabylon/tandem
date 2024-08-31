@@ -62,11 +62,12 @@ func (m *Memory) receiveFromIngester(recv chan msg.ParsedMsg) {
 			}
 			switch envelope := message.Data.(type) {
 			case *nostr.EventEnvelope:
+				m.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("received from ingester: %v", envelope)
 				if err := m.SaveEvent(context.TODO(), &envelope.Event); err != nil {
-					m.logger.Fatal().Err(err).Msg("failed to store event")
+					m.logger.Fatal().Str("connectionId", message.ConnectionId).Err(err).Msg("failed to store event")
 				}
 			default:
-				m.logger.Warn().Msgf("invalid type %T for message, skipping", message.Data)
+				m.logger.Warn().Str("connectionId", message.ConnectionId).Msgf("invalid type %T for message, skipping", message.Data)
 			}
 		}
 	}
