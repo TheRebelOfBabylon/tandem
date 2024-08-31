@@ -51,6 +51,7 @@ func (m *Memory) receiveFromIngester(recv chan msg.ParsedMsg) {
 		m.logger.Error().Err(ErrRecvChanNotSet).Msg("failed to start receive from ingester routine")
 		return
 	}
+loop:
 	for {
 		select {
 		case <-m.quit:
@@ -64,8 +65,11 @@ func (m *Memory) receiveFromIngester(recv chan msg.ParsedMsg) {
 			case *nostr.EventEnvelope:
 				m.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("received from ingester: %v", envelope)
 				if err := m.SaveEvent(context.TODO(), &envelope.Event); err != nil {
-					m.logger.Fatal().Str("connectionId", message.ConnectionId).Err(err).Msg("failed to store event")
+					message.Callback(err)
+					m.logger.Error().Str("connectionId", message.ConnectionId).Err(err).Msg("failed to store event")
+					continue loop
 				}
+				message.Callback(nil)
 			default:
 				m.logger.Warn().Str("connectionId", message.ConnectionId).Msgf("invalid type %T for message, skipping", message.Data)
 			}

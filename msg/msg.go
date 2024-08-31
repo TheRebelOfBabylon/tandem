@@ -12,4 +12,5 @@ type ParsedMsg struct {
 	ConnectionId string
 	Data         nostr.Envelope
 	CloseConn    bool
+	Callback     func(error)
 }

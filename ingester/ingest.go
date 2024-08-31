@@ -3,6 +3,7 @@ package ingester
 import (
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/TheRebelOfBabylon/tandem/msg"
 	"github.com/nbd-wtf/go-nostr"
@@ -14,8 +15,6 @@ var (
 	ErrSubIdTooLarge  = errors.New("subscription id too large")
 )
 
-// TODO - Ingester needs to communicate with storage backend
-// TODO - create ingester workers for communicating with storage backend,
 type Ingester struct {
 	logger            zerolog.Logger
 	recvFromWSHandler chan msg.Msg
@@ -73,20 +72,52 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 			i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
 			return
 		}
-		// send OK message
-		// TODO - Should only send OK after DB accepts/rejects event
-		msgBytes, err := nostr.OKEnvelope{
-			EventID: envelope.ID,
-			OK:      true,
-			Reason:  "",
-		}.MarshalJSON()
-		if err != nil {
-			i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
+		// send to db
+		dbErrChan := make(chan error)
+		i.sendToDB <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope, Callback: func(err error) { dbErrChan <- err }}
+		timer := time.NewTimer(5 * time.Second) // TODO - make this timeout configurable
+	waitForDbLoop:
+		for {
+			select {
+			case err := <-dbErrChan:
+				okMsg := nostr.OKEnvelope{
+					EventID: envelope.ID,
+					OK:      true,
+					Reason:  "",
+				}
+				if err != nil {
+					// send OK error message
+					okMsg.OK = false
+					okMsg.Reason = "error: failed to store event"
+					msgBytes, err := okMsg.MarshalJSON()
+					if err != nil {
+						i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
+					}
+					i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
+					break waitForDbLoop
+				}
+				// send OK message
+				msgBytes, err := okMsg.MarshalJSON()
+				if err != nil {
+					i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
+				}
+				i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
+				// send to filter manager
+				i.sendToFilterMgr <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
+				break waitForDbLoop
+			case <-timer.C:
+				msgBytes, err := nostr.OKEnvelope{
+					EventID: envelope.ID,
+					OK:      false,
+					Reason:  "error: timed out waiting for signal from storag",
+				}.MarshalJSON()
+				if err != nil {
+					i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
+				}
+				i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
+				break waitForDbLoop
+			}
 		}
-		i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
-		// send to db and filter manager
-		i.sendToDB <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
-		i.sendToFilterMgr <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
 	case *nostr.ReqEnvelope:
 		// enforce subid being 64 characters in length
 		if len(envelope.SubscriptionID) > 64 {
