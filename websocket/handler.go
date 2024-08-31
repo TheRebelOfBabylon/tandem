@@ -55,7 +55,6 @@ func newWebsocketConnectionManager(
 
 // read is the goroutine responsible for handling new incoming messages from the websocket connection and sending them to the ingester
 func (m *websocketConnectionManager) read() {
-	// TODO - need to notify filter manager to close any subscriptions associated with this connection
 	defer func() {
 		m.send <- msg.Msg{ConnectionId: m.id, CloseConn: true}
 		close(m.quitWrite)
@@ -87,7 +86,10 @@ loop:
 		select {
 		case msg, ok := <-m.recv:
 			if !ok {
-				// handle
+				m.logger.Warn().Msg("receive from websocket handler channel unexpectedly closed. closing connection...")
+				close(m.quit) //
+				m.conn.Close()
+				return
 			}
 			if msg.ConnectionId != m.id {
 				m.logger.Warn().Msg("received message destined for a different connection manager. Ignoring...")
@@ -122,7 +124,8 @@ func (h *WebsocketServer) websocketHandler(w http.ResponseWriter, r *http.Reques
 	h.logger.Info().Msgf("starting connection manager for new connection with id %s...", id)
 	recvChan := make(chan msg.Msg)
 	quitChan := make(chan struct{})
-	h.connMgrChans[id] = ConnMgrChannels{Recv: recvChan, Quit: quitChan} // may need to make this map Lockable
+	h.connMgrChans[id] = ConnMgrChannels{Recv: recvChan, Quit: quitChan} // TODO - may need to make this map Lockable
+	// TODO - we never clean up this map after a connection is dropped
 	connManager := newWebsocketConnectionManager(
 		id,
 		conn,

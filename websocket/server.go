@@ -26,7 +26,7 @@ type WebsocketServer struct {
 }
 
 // NewWebsocketServer instantiates a new HTTP websocket server
-func NewWebsocketServer(cfg config.HTTP, logger zerolog.Logger, recvFromIngester, recvFromFilterMgr chan msg.Msg) ConnectionHandler { // TODO - change type to the interface and create a mock for testing
+func NewWebsocketServer(cfg config.HTTP, logger zerolog.Logger, recvFromIngester, recvFromFilterMgr chan msg.Msg) ConnectionHandler {
 	s := &WebsocketServer{
 		Server: http.Server{
 			Addr: fmt.Sprintf("%s:%v", cfg.Address, cfg.Port),

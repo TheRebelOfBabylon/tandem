@@ -166,7 +166,8 @@ loop:
 				for _, filter := range envelope.Filters {
 					rcvChan, err := f.dbConn.QueryEvents(context.TODO(), filter)
 					if err != nil {
-						f.logger.Error().Err(err).Msg("failed to query database for events") // TODO - Should this be fatal?
+						f.logger.Error().Err(err).Msg("failed to query database for events")
+						continue
 					}
 					timeOut := time.NewTimer(15 * time.Second) // TODO - Make this timeout configurable
 				innerLoop:

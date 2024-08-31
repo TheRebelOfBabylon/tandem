@@ -16,6 +16,7 @@ var (
 	ErrRecvChanNotSet = errors.New("receive channel not set")
 )
 
+// TODO - create BaseStorage struct with base fields and receive from ingester routine
 type Memory struct {
 	*slicestore.SliceStore
 	logger zerolog.Logger
