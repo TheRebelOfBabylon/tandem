@@ -16,7 +16,6 @@ var (
 	ErrRecvChanNotSet = errors.New("receive channel not set")
 )
 
-// TODO - create BaseStorage struct with base fields and receive from ingester routine
 type Memory struct {
 	*slicestore.SliceStore
 	logger zerolog.Logger
@@ -25,6 +24,7 @@ type Memory struct {
 	sync.WaitGroup
 }
 
+// ConnectToMemory instantiates the Memory storage
 func ConnectMemory(cfg config.Storage, logger zerolog.Logger, recv chan msg.ParsedMsg) (*Memory, error) {
 	sliceStore := &slicestore.SliceStore{}
 	if err := sliceStore.Init(); err != nil {
@@ -38,6 +38,7 @@ func ConnectMemory(cfg config.Storage, logger zerolog.Logger, recv chan msg.Pars
 	}, nil
 }
 
+// Start satisfies the StorageBackend interface
 func (m *Memory) Start() error {
 	m.logger.Info().Msg("starting up...")
 	m.Add(1)
@@ -46,6 +47,7 @@ func (m *Memory) Start() error {
 	return nil
 }
 
+// receiveFromIngester is a goroutine made to receive events to store from the ingester
 func (m *Memory) receiveFromIngester(recv chan msg.ParsedMsg) {
 	defer m.Done()
 	if recv == nil {
@@ -78,6 +80,7 @@ loop:
 	}
 }
 
+// Stop satisfies the StorageBackend interface
 func (m *Memory) Stop() error {
 	m.logger.Info().Msg("shutting down...")
 	close(m.quit)

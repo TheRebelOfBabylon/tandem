@@ -27,7 +27,6 @@ type EdgeDB struct {
 	recv   chan msg.ParsedMsg
 	quit   chan struct{}
 	sync.WaitGroup
-	// TODO - may need to add RWMutex since FilterManager will read potentially at the same time as DB is writing
 }
 
 // ConnectEdgeDB establishes the connection to edgedb
@@ -56,8 +55,10 @@ func ConnectEdgeDB(cfg config.Storage, logger zerolog.Logger, recv chan msg.Pars
 
 // TODO - Add a routine for receiving from ingester
 func (e *EdgeDB) Start() error {
+	e.logger.Info().Msg("starting up...")
 	e.Add(1)
 	go e.receiveFromIngester(e.recv)
+	e.logger.Info().Msg("start up completed")
 	return nil
 }
 
@@ -68,6 +69,7 @@ func (e *EdgeDB) receiveFromIngester(recv chan msg.ParsedMsg) {
 		e.logger.Error().Err(ErrRecvChanNotSet).Msg("failed to start receive from ingester routine")
 		return
 	}
+loop:
 	for {
 		select {
 		case <-e.quit:
@@ -75,23 +77,30 @@ func (e *EdgeDB) receiveFromIngester(recv chan msg.ParsedMsg) {
 			return
 		case message, ok := <-recv:
 			if !ok {
-				// TODO - handle
+				e.logger.Fatal().Msg("receive from ingester channel unexpectedly closed")
 			}
 			switch envelope := message.Data.(type) {
 			case *nostr.EventEnvelope:
+				e.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("received from ingester: %v", envelope)
 				if err := e.SaveEvent(context.TODO(), &envelope.Event); err != nil {
-					e.logger.Fatal().Err(err).Msg("failed to store event")
+					message.Callback(err)
+					e.logger.Error().Str("connectionId", message.ConnectionId).Err(err).Msg("failed to store event")
+					continue loop
 				}
+				message.Callback(nil)
 			default:
-				e.logger.Warn().Msgf("invalid type %T for message, skipping...", message.Data)
+				e.logger.Warn().Str("connectionId", message.ConnectionId).Msgf("invalid type %T for message, skipping", message.Data)
 			}
 		}
 	}
 }
 
+// Stop satisfies the StorageBackend interface
 func (e *EdgeDB) Stop() error {
+	e.logger.Info().Msg("shutting down...")
 	close(e.quit)
 	e.Wait()
 	e.Close()
+	e.logger.Info().Msg("shutdown completed")
 	return nil
 }
