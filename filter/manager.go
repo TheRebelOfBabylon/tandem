@@ -137,13 +137,19 @@ func (f *FilterManager) matchAndSend(event *nostr.EventEnvelope, sendChan chan m
 // manage is the main go routine to receive messages from the ingester
 func (f *FilterManager) manage() {
 	defer f.Done()
+	defer f.logger.Info().Msg("exiting filter management routine...")
 	if f.recvFromIngester == nil {
 		f.logger.Error().Err(ErrIngesterRecvNotSet).Msg("failed to start filter management routine")
 		return
 	}
 loop:
 	for {
+		if f.isStopping() {
+			return
+		}
 		select {
+		case <-f.quit:
+			return
 		case message, ok := <-f.recvFromIngester:
 			if !ok {
 				f.logger.Fatal().Msg("receive from ingester channel unexpectedely closed")
@@ -156,10 +162,8 @@ loop:
 			}
 			switch envelope := message.Data.(type) {
 			case *nostr.EventEnvelope:
-				if !f.stopping {
-					f.Add(1)
-					go f.matchAndSend(envelope, f.sendToWSHandler)
-				}
+				f.Add(1)
+				go f.matchAndSend(envelope, f.sendToWSHandler)
 			case *nostr.ReqEnvelope:
 				// perform db query
 				f.logger.Debug().Msgf("received from ingester: %v", envelope)
@@ -201,10 +205,9 @@ loop:
 					// remove it from our map
 					f.endSubscription(message.ConnectionId, string(*envelope))
 				}
+			default:
+				f.logger.Fatal().Msgf("unexpected type received from ingester: %T", envelope)
 			}
-		case <-f.quit:
-			f.logger.Info().Msg("stopping filter management routine...")
-			return
 		}
 	}
 }
@@ -212,7 +215,7 @@ loop:
 // Stop safely stops the FilterManager instance
 func (f *FilterManager) Stop() error {
 	f.logger.Info().Msg("shutting down...")
-	f.stopping = true
+	f.toggleStopping(true)
 	close(f.quit)
 	f.Wait()
 	close(f.sendToWSHandler)
@@ -223,4 +226,18 @@ func (f *FilterManager) Stop() error {
 // SendChannel is wrapper around the send channel to the websocket handler
 func (f *FilterManager) SendChannel() chan msg.Msg {
 	return f.sendToWSHandler
+}
+
+// toggleStopping changes the state of the stopping variable
+func (f *FilterManager) toggleStopping(state bool) {
+	f.Lock()
+	defer f.Unlock()
+	f.stopping = state
+}
+
+// isStopping checks the state of the stopping variable
+func (f *FilterManager) isStopping() bool {
+	f.RLock()
+	defer f.RUnlock()
+	return f.stopping
 }
