@@ -179,7 +179,7 @@ loop:
 						select {
 						case event, ok := <-rcvChan:
 							f.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("received from storage backend: %v", event)
-							if !ok {
+							if !ok || event == nil {
 								break innerLoop
 							}
 							eventEnv := nostr.EventEnvelope{SubscriptionID: &envelope.SubscriptionID, Event: *event}

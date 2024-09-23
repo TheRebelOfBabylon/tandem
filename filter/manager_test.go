@@ -21,7 +21,7 @@ var (
 )
 
 // initFilterManager initializes the FilterManager
-func initFilterManager(t *testing.T, recvChan chan msg.ParsedMsg, filters map[string][]*nostr.ReqEnvelope, logger zerolog.Logger, dbConn storage.StorageBackend) *FilterManager {
+func initFilterManager(recvChan chan msg.ParsedMsg, filters map[string][]*nostr.ReqEnvelope, logger zerolog.Logger, dbConn storage.StorageBackend) *FilterManager {
 	return &FilterManager{
 		recvFromIngester: recvChan,
 		sendToWSHandler:  make(chan msg.Msg),
@@ -127,10 +127,12 @@ var (
 			"sig": "4476430ba8badd7c1c4d99f0bb5b1797ef65c977db61be992206b147049def7409215523e5540b737a5d0b91e33b86325f6d72a4e3267322fc87df991a354940"
 		}]`,
 	}
+	existingConnId                 = "0d8f8ea5-65e4-4614-8ce2-8dca6966b028"
+	existingSubId                  = "fe0e4851-c65d-4adf-93a4-c507cb1ab271"
 	preloadedFiltersforTestFilters = map[string][]*nostr.ReqEnvelope{
-		"0d8f8ea5-65e4-4614-8ce2-8dca6966b028": {
+		existingConnId: {
 			{
-				SubscriptionID: "0d8f8ea5-65e4-4614-8ce2-8dca6966b028",
+				SubscriptionID: existingSubId,
 				Filters: nostr.Filters{
 					{
 						IDs: []string{},
@@ -139,10 +141,13 @@ var (
 			},
 		},
 	}
+	newSubId    = "44f835ed-bd39-48b9-b1b1-7c1be3e0b87f"
+	newConnId   = "b19a7e3a-6f6a-47ef-9bdc-30bbb4848e59"
+	newSubIdTwo = "6f933105-ec6f-402a-8267-989a29000175"
 )
 
-// TestFilterManager tests that the filter manager behaves as expected
-func TestFilters(t *testing.T) {
+// TestConnectionAndSubscriptionMgmt tests that the filter manager behaves as expected when adding new subscrptions and connections as well as ending subscriptions and connections
+func TestConnectionAndSubscriptionMgmt(t *testing.T) {
 	// initialize logger
 	mainLogger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339, FormatLevel: formatLvlFunc, TimeLocation: time.UTC}).With().Timestamp().Logger()
 	// initalize and start storage backend
@@ -154,17 +159,552 @@ func TestFilters(t *testing.T) {
 	if err := dbConn.Start(); err != nil {
 		t.Fatalf("unexpected err when starting storage backend: %v", err)
 	}
+	defer func() {
+		if err := dbConn.Stop(); err != nil {
+			t.Errorf("unexpected error when safely shutting down db connection: %v", err)
+		}
+	}()
 	// load storage backend with events
 	for _, event := range preloadedEventsforTestFilters {
-		toDb <- msg.ParsedMsg{ConnectionId: "some-id", Data: nostr.ParseMessage([]byte(event))}
+		errChan := make(chan error)
+		toDb <- msg.ParsedMsg{ConnectionId: "some-id", Data: nostr.ParseMessage([]byte(event)), Callback: func(err error) { errChan <- err }}
+		timer := time.NewTimer(5 * time.Second)
+	errLoop:
+		for {
+			select {
+			case err := <-errChan:
+				if err != nil {
+					t.Fatalf("unexpected error when loading storage backend with events: %v", err)
+				}
+				break errLoop
+			case <-timer.C:
+				t.Fatal("timed out waiting for error response from storage backend")
+			}
+		}
 	}
 	// initialize filter manager
 	fromIngester := make(chan msg.ParsedMsg)
-	filterMgr := initFilterManager(t, fromIngester, preloadedFiltersforTestFilters, mainLogger.With().Str("module", "filterManager").Logger(), dbConn)
-	// load the
+	filterMgr := initFilterManager(fromIngester, preloadedFiltersforTestFilters, mainLogger.With().Str("module", "filterManager").Logger(), dbConn)
 	// start the filter manager
 	if err := filterMgr.Start(); err != nil {
 		t.Fatalf("unexpected error when starting filter manager: %v", err)
 	}
+	defer func() {
+		if err := filterMgr.Stop(); err != nil {
+			t.Errorf("unexpected error when shutting down filter manager: %v", err)
+		}
+	}()
+	// ensure the preloaded connection and subscription id exist
+	if !filterMgr.contains(existingConnId, existingSubId) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", existingConnId, existingSubId)
+	}
+	// ensure that the contains function behaves as expected
+	if filterMgr.contains(existingConnId, "some-random-id") {
+		t.Errorf("filter manager contains a subscription id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", existingSubId) {
+		t.Errorf("filter manager contains a connection id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", "some-random-id") {
+		t.Errorf("filter manager contains a connection id and/or subscription id that it shouldn't")
+	}
+	// overwrite existing subid and check if it exists
+	filterMgr.addSubscription(existingConnId, &nostr.ReqEnvelope{SubscriptionID: existingSubId})
+	// ensure the preloaded connection and subscription id exist
+	if !filterMgr.contains(existingConnId, existingSubId) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", existingConnId, existingSubId)
+	}
+	// ensure that the contains function behaves as expected
+	if filterMgr.contains(existingConnId, "some-random-id") {
+		t.Errorf("filter manager contains a subscription id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", existingSubId) {
+		t.Errorf("filter manager contains a connection id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", "some-random-id") {
+		t.Errorf("filter manager contains a connection id and/or subscription id that it shouldn't")
+	}
+	// add a new subscription and check it exists
+	filterMgr.addSubscription(existingConnId, &nostr.ReqEnvelope{SubscriptionID: newSubId})
+	if !filterMgr.contains(existingConnId, newSubId) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", existingConnId, newSubId)
+	}
+	// ensure the preloaded connection and subscription id still exist
+	if !filterMgr.contains(existingConnId, existingSubId) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", existingConnId, existingSubId)
+	}
+	// ensure that the contains function behaves as expected
+	if filterMgr.contains(existingConnId, "some-random-id") {
+		t.Errorf("filter manager contains a subscription id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", newSubId) {
+		t.Errorf("filter manager contains a connection id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", "some-random-id") {
+		t.Errorf("filter manager contains a connection id and/or subscription id that it shouldn't")
+	}
+	filterMgr.addSubscription(newConnId, &nostr.ReqEnvelope{SubscriptionID: newSubIdTwo})
+	if !filterMgr.contains(newConnId, newSubIdTwo) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", newConnId, newSubIdTwo)
+	}
+	// ensure the preloaded connection and subscription id still exist
+	if !filterMgr.contains(existingConnId, newSubId) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", existingConnId, newSubId)
+	}
+	if !filterMgr.contains(existingConnId, existingSubId) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", existingConnId, existingSubId)
+	}
+	// ensure that the contains function behaves as expected
+	if filterMgr.contains(existingConnId, "some-random-id") {
+		t.Errorf("filter manager contains a subscription id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", newSubId) {
+		t.Errorf("filter manager contains a connection id that it shouldn't")
+	}
+	if filterMgr.contains(newConnId, "some-random-id") {
+		t.Errorf("filter manager contains a subscription id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", newSubIdTwo) {
+		t.Errorf("filter manager contains a connection id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", "some-random-id") {
+		t.Errorf("filter manager contains a connection id and/or subscription id that it shouldn't")
+	}
+	// endSub non-existing subid but existing connid
+	filterMgr.endSubscription(existingConnId, "some-random-id")
+	if !filterMgr.contains(newConnId, newSubIdTwo) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", newConnId, newSubIdTwo)
+	}
+	// ensure the preloaded connection and subscription id still exist
+	if !filterMgr.contains(existingConnId, newSubId) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", existingConnId, newSubId)
+	}
+	if !filterMgr.contains(existingConnId, existingSubId) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", existingConnId, existingSubId)
+	}
+	// ensure that the contains function behaves as expected
+	if filterMgr.contains(existingConnId, "some-random-id") {
+		t.Errorf("filter manager contains a subscription id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", newSubId) {
+		t.Errorf("filter manager contains a connection id that it shouldn't")
+	}
+	if filterMgr.contains(newConnId, "some-random-id") {
+		t.Errorf("filter manager contains a subscription id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", newSubIdTwo) {
+		t.Errorf("filter manager contains a connection id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", "some-random-id") {
+		t.Errorf("filter manager contains a connection id and/or subscription id that it shouldn't")
+	}
+	// endSub non-existing subid, non-existing connid
+	filterMgr.endSubscription("new-conn-id", "some-random-id")
+	if !filterMgr.contains(newConnId, newSubIdTwo) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", newConnId, newSubIdTwo)
+	}
+	// ensure the preloaded connection and subscription id still exist
+	if !filterMgr.contains(existingConnId, newSubId) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", existingConnId, newSubId)
+	}
+	if !filterMgr.contains(existingConnId, existingSubId) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", existingConnId, existingSubId)
+	}
+	// ensure that the contains function behaves as expected
+	if filterMgr.contains(existingConnId, "some-random-id") {
+		t.Errorf("filter manager contains a subscription id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", newSubId) {
+		t.Errorf("filter manager contains a connection id that it shouldn't")
+	}
+	if filterMgr.contains(newConnId, "some-random-id") {
+		t.Errorf("filter manager contains a subscription id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", newSubIdTwo) {
+		t.Errorf("filter manager contains a connection id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", "some-random-id") {
+		t.Errorf("filter manager contains a connection id and/or subscription id that it shouldn't")
+	}
+	// endSub existing subid, non-existing connid
+	filterMgr.endSubscription("new-conn-id", existingSubId)
+	if !filterMgr.contains(newConnId, newSubIdTwo) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", newConnId, newSubIdTwo)
+	}
+	// ensure the preloaded connection and subscription id still exist
+	if !filterMgr.contains(existingConnId, newSubId) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", existingConnId, newSubId)
+	}
+	if !filterMgr.contains(existingConnId, existingSubId) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", existingConnId, existingSubId)
+	}
+	// ensure that the contains function behaves as expected
+	if filterMgr.contains(existingConnId, "some-random-id") {
+		t.Errorf("filter manager contains a subscription id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", newSubId) {
+		t.Errorf("filter manager contains a connection id that it shouldn't")
+	}
+	if filterMgr.contains(newConnId, "some-random-id") {
+		t.Errorf("filter manager contains a subscription id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", newSubIdTwo) {
+		t.Errorf("filter manager contains a connection id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", "some-random-id") {
+		t.Errorf("filter manager contains a connection id and/or subscription id that it shouldn't")
+	}
+	// endSub existing subid, existing connid
+	filterMgr.endSubscription(existingConnId, existingSubId)
+	if filterMgr.contains(existingConnId, existingSubId) {
+		t.Errorf("filter manager contains the given connection id or sub id and it shouldn't: connectionId=%s\tsubscriptionId=%s", existingConnId, existingSubId)
+	}
+	// ensure the preloaded connection and subscription id still exist
+	if !filterMgr.contains(existingConnId, newSubId) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", existingConnId, newSubId)
+	}
+	if !filterMgr.contains(newConnId, newSubIdTwo) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", existingConnId, existingSubId)
+	}
+	// ensure that the contains function behaves as expected
+	if filterMgr.contains(existingConnId, "some-random-id") {
+		t.Errorf("filter manager contains a subscription id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", newSubId) {
+		t.Errorf("filter manager contains a connection id that it shouldn't")
+	}
+	if filterMgr.contains(newConnId, "some-random-id") {
+		t.Errorf("filter manager contains a subscription id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", newSubIdTwo) {
+		t.Errorf("filter manager contains a connection id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", "some-random-id") {
+		t.Errorf("filter manager contains a connection id and/or subscription id that it shouldn't")
+	}
+	// endConn non-existing connid
+	filterMgr.endConnection("new-conn-id")
+	if filterMgr.contains(existingConnId, existingSubId) {
+		t.Errorf("filter manager contains the given connection id or sub id and it shouldn't: connectionId=%s\tsubscriptionId=%s", existingConnId, existingSubId)
+	}
+	// ensure the preloaded connection and subscription id still exist
+	if !filterMgr.contains(existingConnId, newSubId) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", existingConnId, newSubId)
+	}
+	if !filterMgr.contains(newConnId, newSubIdTwo) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", existingConnId, existingSubId)
+	}
+	// ensure that the contains function behaves as expected
+	if filterMgr.contains(existingConnId, "some-random-id") {
+		t.Errorf("filter manager contains a subscription id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", newSubId) {
+		t.Errorf("filter manager contains a connection id that it shouldn't")
+	}
+	if filterMgr.contains(newConnId, "some-random-id") {
+		t.Errorf("filter manager contains a subscription id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", newSubIdTwo) {
+		t.Errorf("filter manager contains a connection id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", "some-random-id") {
+		t.Errorf("filter manager contains a connection id and/or subscription id that it shouldn't")
+	}
+	// endConn, existing connid
+	filterMgr.endConnection(newConnId)
+	if filterMgr.contains(newConnId, newSubIdTwo) {
+		t.Errorf("filter manager contains the given connection id or sub id and it shoudln't: connectionId=%s\tsubscriptionId=%s", newConnId, newSubIdTwo)
+	}
+	if filterMgr.contains(existingConnId, existingSubId) {
+		t.Errorf("filter manager contains the given connection id or sub id and it shouldn't: connectionId=%s\tsubscriptionId=%s", existingConnId, existingSubId)
+	}
+	// ensure the preloaded connection and subscription id still exist
+	if !filterMgr.contains(existingConnId, newSubId) {
+		t.Errorf("filter manager does not contain the given connection id or sub id as expected: connectionId=%s\tsubscriptionId=%s", existingConnId, newSubId)
+	}
+	// ensure that the contains function behaves as expected
+	if filterMgr.contains(existingConnId, "some-random-id") {
+		t.Errorf("filter manager contains a subscription id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", newSubId) {
+		t.Errorf("filter manager contains a connection id that it shouldn't")
+	}
+	if filterMgr.contains(newConnId, "some-random-id") {
+		t.Errorf("filter manager contains a subscription id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", newSubIdTwo) {
+		t.Errorf("filter manager contains a connection id that it shouldn't")
+	}
+	if filterMgr.contains("new-conn-id", "some-random-id") {
+		t.Errorf("filter manager contains a connection id and/or subscription id that it shouldn't")
+	}
+}
 
+type filterMgrTestCase struct {
+	name           string
+	inputMsg       msg.ParsedMsg
+	validationFunc func(t *testing.T, filterMgr *FilterManager, filterMgrChan chan msg.Msg)
+}
+
+var (
+	filterTime         = nostr.Timestamp(int64(1725319700))
+	filterMgrTestCases = []filterMgrTestCase{
+		{
+			name: "REQ_Overwrite_SubId_IDs",
+			inputMsg: msg.ParsedMsg{
+				ConnectionId: existingConnId,
+				Data: &nostr.ReqEnvelope{
+					SubscriptionID: existingSubId,
+					Filters: []nostr.Filter{
+						{
+							IDs: []string{"5fa0f011d76ad5ee386532e800b92e2b8a1154d42358ee78f8d0ca02cc6fe070"},
+						},
+					},
+				},
+			},
+			validationFunc: func(t *testing.T, filterMgr *FilterManager, filterMgrChan chan msg.Msg) {
+				if !filterMgr.contains(existingConnId, existingSubId) {
+					t.Errorf("filter manager does not contain the given connection id or subscription id as expected: connId=%s\tsubId=%s", existingConnId, existingSubId)
+				}
+				for i := 0; i < 2; i++ {
+					message := <-filterMgrChan
+					if message.ConnectionId != existingConnId {
+						t.Errorf("message from filter manager contains an unexpected connection id %s", message.ConnectionId)
+					}
+					if message.CloseConn {
+						t.Error("message from filter manager close connection flag unexpectedely set to true")
+					}
+					switch m := nostr.ParseMessage(message.Data).(type) {
+					case *nostr.EventEnvelope:
+						if *m.SubscriptionID != existingSubId {
+							t.Errorf("event from filter manager contains an unexpected subscription id %s", *m.SubscriptionID)
+						}
+						if m.ID != "5fa0f011d76ad5ee386532e800b92e2b8a1154d42358ee78f8d0ca02cc6fe070" {
+							t.Errorf("event from filter manager does not contain expected id: %s", m.ID)
+						}
+					case *nostr.EOSEEnvelope:
+						if *m != nostr.EOSEEnvelope(existingSubId) {
+							t.Errorf("EOSE from filter manager contains an unexpected subscription id %s", *m)
+						}
+					default:
+						t.Errorf("message from filter manager of an unexpected type %T", m)
+					}
+				}
+				time.Sleep(1 * time.Second)
+				if !filterMgr.contains(existingConnId, existingSubId) {
+					t.Errorf("filter manager does not contain the given connection id or subscription id as expected: connId=%s\tsubId=%s", existingConnId, existingSubId)
+				}
+			},
+		},
+		{
+			name: "REQ_New_SubId_Authors",
+			inputMsg: msg.ParsedMsg{
+				ConnectionId: existingConnId,
+				Data: &nostr.ReqEnvelope{
+					SubscriptionID: newSubId,
+					Filters: []nostr.Filter{
+						{
+							Authors: []string{"e43f16ab84552a8680d3ade518803770fa16c9835da0a0f5b376cddef7f12786"},
+						},
+					},
+				},
+			},
+			validationFunc: func(t *testing.T, filterMgr *FilterManager, filterMgrChan chan msg.Msg) {
+				for i := 0; i < 3; i++ {
+					message := <-filterMgrChan
+					if message.ConnectionId != existingConnId {
+						t.Errorf("message from filter manager contains an unexpected connection id %s", message.ConnectionId)
+					}
+					if message.CloseConn {
+						t.Error("message from filter manager close connection flag unexpectedely set to true")
+					}
+					switch m := nostr.ParseMessage(message.Data).(type) {
+					case *nostr.EventEnvelope:
+						if *m.SubscriptionID != newSubId {
+							t.Errorf("event from filter manager contains an unexpected subscription id %s", *m.SubscriptionID)
+						}
+						if m.PubKey != "e43f16ab84552a8680d3ade518803770fa16c9835da0a0f5b376cddef7f12786" {
+							t.Errorf("event from filter manager does not contain expected pubkey: %s", m.PubKey)
+						}
+					case *nostr.EOSEEnvelope:
+						if *m != nostr.EOSEEnvelope(newSubId) {
+							t.Errorf("EOSE from filter manager contains an unexpected subscription id %s", *m)
+						}
+					default:
+						t.Errorf("message from filter manager of an unexpected type %T", m)
+					}
+				}
+				time.Sleep(1 * time.Second) // wait for a second to allow the manage go routine the opportunity to register the new sub id
+				if !filterMgr.contains(existingConnId, existingSubId) {
+					t.Errorf("filter manager does not contain the given connection id or subscription id as expected: connId=%s\tsubId=%s", existingConnId, existingSubId)
+				}
+				if !filterMgr.contains(existingConnId, newSubId) {
+					t.Errorf("filter manager does not contain the given connection id or subscription id as expected: connId=%s\tsubId=%s", existingConnId, newSubId)
+				}
+			},
+		},
+		{
+			name: "REQ_New_ConnId_Since",
+			inputMsg: msg.ParsedMsg{
+				ConnectionId: newConnId,
+				Data: &nostr.ReqEnvelope{
+					SubscriptionID: newSubIdTwo,
+					Filters: []nostr.Filter{
+						{
+							Since: &filterTime,
+						},
+					},
+				},
+			},
+			validationFunc: func(t *testing.T, filterMgr *FilterManager, filterMgrChan chan msg.Msg) {
+				for i := 0; i < 2; i++ {
+					message := <-filterMgrChan
+					if message.ConnectionId != newConnId {
+						t.Errorf("message from filter manager contains an unexpected connection id %s", message.ConnectionId)
+					}
+					if message.CloseConn {
+						t.Error("message from filter manager close connection flag unexpectedely set to true")
+					}
+					switch m := nostr.ParseMessage(message.Data).(type) {
+					case *nostr.EventEnvelope:
+						if *m.SubscriptionID != newSubIdTwo {
+							t.Errorf("event from filter manager contains an unexpected subscription id %s", *m.SubscriptionID)
+						}
+						if m.CreatedAt < filterTime {
+							t.Errorf("event from filter manager was created before filter threshold: %s", m.CreatedAt.Time().String())
+						}
+					case *nostr.EOSEEnvelope:
+						if *m != nostr.EOSEEnvelope(newSubIdTwo) {
+							t.Errorf("EOSE from filter manager contains an unexpected subscription id %s", *m)
+						}
+					default:
+						t.Errorf("message from filter manager of an unexpected type %T", m)
+					}
+				}
+				time.Sleep(1 * time.Second) // wait for a second to allow the manage go routine the opportunity to register the new sub id
+				if !filterMgr.contains(existingConnId, existingSubId) {
+					t.Errorf("filter manager does not contain the given connection id or subscription id as expected: connId=%s\tsubId=%s", existingConnId, existingSubId)
+				}
+				if !filterMgr.contains(existingConnId, newSubId) {
+					t.Errorf("filter manager does not contain the given connection id or subscription id as expected: connId=%s\tsubId=%s", existingConnId, newSubId)
+				}
+				if !filterMgr.contains(newConnId, newSubIdTwo) {
+					t.Errorf("filter manager does not contain the given connection id or subscription id as expected: connId=%s\tsubId=%s", newConnId, newSubIdTwo)
+				}
+			},
+		},
+		{
+			name: "REQ_Overwrite_SubId_Until",
+			inputMsg: msg.ParsedMsg{
+				ConnectionId: newConnId,
+				Data: &nostr.ReqEnvelope{
+					SubscriptionID: newSubIdTwo,
+					Filters: []nostr.Filter{
+						{
+							Until: &filterTime,
+						},
+					},
+				},
+			},
+			validationFunc: func(t *testing.T, filterMgr *FilterManager, filterMgrChan chan msg.Msg) {
+				for i := 0; i < 5; i++ {
+					message := <-filterMgrChan
+					if message.ConnectionId != newConnId {
+						t.Errorf("message from filter manager contains an unexpected connection id %s", message.ConnectionId)
+					}
+					if message.CloseConn {
+						t.Error("message from filter manager close connection flag unexpectedely set to true")
+					}
+					switch m := nostr.ParseMessage(message.Data).(type) {
+					case *nostr.EventEnvelope:
+						if *m.SubscriptionID != newSubIdTwo {
+							t.Errorf("event from filter manager contains an unexpected subscription id %s", *m.SubscriptionID)
+						}
+						if m.CreatedAt > filterTime {
+							t.Errorf("event from filter manager was created after filter threshold: %s", m.CreatedAt.Time().String())
+						}
+					case *nostr.EOSEEnvelope:
+						if *m != nostr.EOSEEnvelope(newSubIdTwo) {
+							t.Errorf("EOSE from filter manager contains an unexpected subscription id %s", *m)
+						}
+					default:
+						t.Errorf("message from filter manager of an unexpected type %T", m)
+					}
+				}
+				time.Sleep(1 * time.Second) // wait for a second to allow the manage go routine the opportunity to register the new sub id
+				if !filterMgr.contains(existingConnId, existingSubId) {
+					t.Errorf("filter manager does not contain the given connection id or subscription id as expected: connId=%s\tsubId=%s", existingConnId, existingSubId)
+				}
+				if !filterMgr.contains(existingConnId, newSubId) {
+					t.Errorf("filter manager does not contain the given connection id or subscription id as expected: connId=%s\tsubId=%s", existingConnId, newSubId)
+				}
+				if !filterMgr.contains(newConnId, newSubIdTwo) {
+					t.Errorf("filter manager does not contain the given connection id or subscription id as expected: connId=%s\tsubId=%s", newConnId, newSubIdTwo)
+				}
+			},
+		},
+		// Test Kinds
+		// Test Tags
+		// Test Limit
+		// Test CLOSE message
+		// Test multiple filter conditions
+		// Test Sending different types of REQ
+		// Test CloseConn = true
+	}
+)
+
+// TestFilterManager tests that the filter manager behaves as expected based on different messages received into it's main go routine
+func TestFilterManager(t *testing.T) {
+	// initialize logger
+	mainLogger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339, FormatLevel: formatLvlFunc, TimeLocation: time.UTC}).With().Timestamp().Logger()
+	// initalize and start storage backend
+	toDb := make(chan msg.ParsedMsg)
+	dbConn, err := storage.Connect(config.Storage{Uri: "memory://"}, mainLogger.With().Str("module", "storageBackend").Logger(), toDb)
+	if err != nil {
+		t.Fatalf("unexpected error when initializing storage backend: %v", err)
+	}
+	if err := dbConn.Start(); err != nil {
+		t.Fatalf("unexpected err when starting storage backend: %v", err)
+	}
+	defer func() {
+		if err := dbConn.Stop(); err != nil {
+			t.Errorf("unexpected error when safely shutting down db connection: %v", err)
+		}
+	}()
+	// load storage backend with events
+	for _, event := range preloadedEventsforTestFilters {
+		errChan := make(chan error)
+		toDb <- msg.ParsedMsg{ConnectionId: "some-id", Data: nostr.ParseMessage([]byte(event)), Callback: func(err error) { errChan <- err }}
+		timer := time.NewTimer(5 * time.Second)
+	errLoop:
+		for {
+			select {
+			case err := <-errChan:
+				if err != nil {
+					t.Fatalf("unexpected error when loading storage backend with events: %v", err)
+				}
+				break errLoop
+			case <-timer.C:
+				t.Fatal("timed out waiting for error response from storage backend")
+			}
+		}
+	}
+	// initialize filter manager
+	fromIngester := make(chan msg.ParsedMsg)
+	filterMgr := initFilterManager(fromIngester, preloadedFiltersforTestFilters, mainLogger.With().Str("module", "filterManager").Logger(), dbConn)
+	// start the filter manager
+	if err := filterMgr.Start(); err != nil {
+		t.Fatalf("unexpected error when starting filter manager: %v", err)
+	}
+	defer func() {
+		if err := filterMgr.Stop(); err != nil {
+			t.Errorf("unexpected error when shutting down filter manager: %v", err)
+		}
+	}()
+	filterMgrChan := filterMgr.SendChannel()
+	for _, testCase := range filterMgrTestCases {
+		t.Logf("start test case %s...", testCase.name)
+		fromIngester <- testCase.inputMsg
+		testCase.validationFunc(t, filterMgr, filterMgrChan)
+	}
 }
