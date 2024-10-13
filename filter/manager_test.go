@@ -958,9 +958,57 @@ var (
 				}
 			},
 		},
-		// Test CloseConn = true NonExistingConnId
-		// Test CloseConn = true ExistingConnId
+		{
+			name: "CloseConn_NonExistingConnId",
+			inputMsg: msg.ParsedMsg{
+				ConnectionId: "new-conn-id",
+				CloseConn:    true,
+			},
+			validationFunc: func(t *testing.T, filterMgr *FilterManager, filterMgrChan chan msg.Msg) {
+				time.Sleep(1 * time.Second)
+				if !filterMgr.contains(existingConnId, existingSubId) {
+					t.Errorf("filter manager does not contain the given connection id or subscription id as expected: connId=%s\tsubId=%s", existingConnId, existingSubId)
+				}
+				if !filterMgr.contains(existingConnId, newSubId) {
+					t.Errorf("filter manager does not contain the given connection id or subscription id as expected: connId=%s\tsubId=%s", existingConnId, newSubId)
+				}
+				if !filterMgr.contains(newConnId, newSubIdThree) {
+					t.Errorf("filter manager does not contain the given connection id or subscription id as expected: connId=%s\tsubId=%s", newConnId, newSubIdThree)
+				}
+			},
+		},
+		{
+			name: "CloseConn_ExistingConnId",
+			inputMsg: msg.ParsedMsg{
+				ConnectionId: newConnId,
+				CloseConn:    true,
+			},
+			validationFunc: func(t *testing.T, filterMgr *FilterManager, filterMgrChan chan msg.Msg) {
+				time.Sleep(1 * time.Second)
+				if !filterMgr.contains(existingConnId, existingSubId) {
+					t.Errorf("filter manager does not contain the given connection id or subscription id as expected: connId=%s\tsubId=%s", existingConnId, existingSubId)
+				}
+				if !filterMgr.contains(existingConnId, newSubId) {
+					t.Errorf("filter manager does not contain the given connection id or subscription id as expected: connId=%s\tsubId=%s", existingConnId, newSubId)
+				}
+				if filterMgr.contains(newConnId, newSubIdThree) {
+					t.Errorf("filter manager does contain the given connection id or subscription id and it shouldn't: connId=%s\tsubId=%s", newConnId, newSubIdThree)
+				}
+			},
+		},
 		// Test Sending different types of EVENT
+	}
+	preloadedFiltersforTestFilterMgr = map[string][]*nostr.ReqEnvelope{
+		existingConnId: {
+			{
+				SubscriptionID: existingSubId,
+				Filters: nostr.Filters{
+					{
+						IDs: []string{},
+					},
+				},
+			},
+		},
 	}
 )
 
@@ -1002,7 +1050,7 @@ func TestFilterManager(t *testing.T) {
 	}
 	// initialize filter manager
 	fromIngester := make(chan msg.ParsedMsg)
-	filterMgr := initFilterManager(fromIngester, preloadedFiltersforTestFilters, mainLogger.With().Str("module", "filterManager").Logger(), dbConn)
+	filterMgr := initFilterManager(fromIngester, preloadedFiltersforTestFilterMgr, mainLogger.With().Str("module", "filterManager").Logger(), dbConn)
 	// start the filter manager
 	if err := filterMgr.Start(); err != nil {
 		t.Fatalf("unexpected error when starting filter manager: %v", err)
