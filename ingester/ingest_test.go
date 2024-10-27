@@ -18,7 +18,7 @@ type ingesterTestCase struct {
 	inputRawMsg          msg.Msg
 	expectedMsg          *msg.Msg
 	expectedDbMsg        *msg.ParsedMsg
-	dbErr                error
+	dbCallbackHandler    func(callback func(err error))
 	expectedFilterMgrMsg *msg.ParsedMsg
 }
 
@@ -64,7 +64,26 @@ var (
 		Content: "Lmao. ",
 		Sig:     "6da33343f86617acc68654652de083fbf24d86986cfc3cbfc82cd8017f086c5ac2d2b0da4bc48717b98660306bfdda2e2005ae7c8178cb1ee2df751b20326fad",
 	}
-	// subIdOne = "a64ea55b-1cb2-42a1-9d30-e1d2bc7074d0"
+	largeSubId           = "4ezw1s6zwl6zgp96t4m5haxsc8kp007py229f6gtlzwmyrkrvhqtlmu7fudvtcpkc"
+	defaultReqLargeSubId = nostr.ReqEnvelope{
+		SubscriptionID: largeSubId,
+		Filters: nostr.Filters{
+			{
+				Kinds: []int{1},
+			},
+		},
+	}
+	subIdOne   = "a64ea55b-1cb2-42a1-9d30-e1d2bc7074d0"
+	defaultReq = nostr.ReqEnvelope{
+		SubscriptionID: subIdOne,
+		Filters: nostr.Filters{
+			{
+				Kinds: []int{1},
+				Tags:  nostr.TagMap{},
+			},
+		},
+	}
+	defaultClose      = nostr.CloseEnvelope(subIdOne)
 	ingesterTestCases = []ingesterTestCase{
 		{
 			name: "ValidCase_ClosedConn",
@@ -108,7 +127,9 @@ var (
 					Event: defaultEvent,
 				},
 			},
-			dbErr: errors.New("some db related error"),
+			dbCallbackHandler: func(callback func(err error)) {
+				callback(errors.New("some db related error"))
+			},
 			expectedMsg: &msg.Msg{
 				ConnectionId: connIdOne,
 				Data: test.OKBytes(nostr.OKEnvelope{
@@ -117,11 +138,107 @@ var (
 					Reason:  "error: failed to store event",
 				}),
 			},
+		},
+		{
+			name: "ValidCase_Event_NoDbErr",
+			inputRawMsg: msg.Msg{
+				ConnectionId: connIdOne,
+				Data: test.EventBytes(nostr.EventEnvelope{
+					Event: defaultEvent,
+				}),
+			},
+			expectedDbMsg: &msg.ParsedMsg{
+				ConnectionId: connIdOne,
+				Data: &nostr.EventEnvelope{
+					Event: defaultEvent,
+				},
+			},
+			dbCallbackHandler: func(callback func(err error)) {
+				callback(nil)
+			},
+			expectedMsg: &msg.Msg{
+				ConnectionId: connIdOne,
+				Data: test.OKBytes(nostr.OKEnvelope{
+					EventID: "4edfccdec007edf614a1a7355260f461ce6f7970b85f479d8f61a13bee83a4f6",
+					OK:      true,
+				}),
+			},
 			expectedFilterMgrMsg: &msg.ParsedMsg{
 				ConnectionId: connIdOne,
 				Data: &nostr.EventEnvelope{
 					Event: defaultEvent,
 				},
+			},
+		},
+		{
+			name: "ValidCase_Event_DbTimeout",
+			inputRawMsg: msg.Msg{
+				ConnectionId: connIdOne,
+				Data: test.EventBytes(nostr.EventEnvelope{
+					Event: defaultEvent,
+				}),
+			},
+			expectedDbMsg: &msg.ParsedMsg{
+				ConnectionId: connIdOne,
+				Data: &nostr.EventEnvelope{
+					Event: defaultEvent,
+				},
+			},
+			expectedMsg: &msg.Msg{
+				ConnectionId: connIdOne,
+				Data: test.OKBytes(nostr.OKEnvelope{
+					EventID: "4edfccdec007edf614a1a7355260f461ce6f7970b85f479d8f61a13bee83a4f6",
+					OK:      false,
+					Reason:  "error: failed to store event",
+				}),
+			},
+		},
+		{
+			name: "ValidCase_Req_SubscriptionIDTooLarge",
+			inputRawMsg: msg.Msg{
+				ConnectionId: connIdOne,
+				Data:         test.ReqBytes(defaultReqLargeSubId),
+			},
+			expectedMsg: &msg.Msg{
+				ConnectionId: connIdOne,
+				Data: test.ClosedBytes(nostr.ClosedEnvelope{
+					SubscriptionID: largeSubId,
+					Reason:         "error: subscription id exceeds 64 character limit",
+				}),
+			},
+		},
+		{
+			name: "ValidCase_Req",
+			inputRawMsg: msg.Msg{
+				ConnectionId: connIdOne,
+				Data:         test.ReqBytes(defaultReq),
+			},
+			expectedFilterMgrMsg: &msg.ParsedMsg{
+				ConnectionId: connIdOne,
+				Data:         &defaultReq,
+			},
+		},
+		{
+			name: "ValidCase_Close",
+			inputRawMsg: msg.Msg{
+				ConnectionId: connIdOne,
+				Data:         test.CloseBytes(defaultClose),
+			},
+			expectedFilterMgrMsg: &msg.ParsedMsg{
+				ConnectionId: connIdOne,
+				Data:         &defaultClose,
+			},
+		},
+		{
+			name: "ValidCase_InvalidMessage",
+			inputRawMsg: msg.Msg{
+				ConnectionId: connIdOne,
+				Data:         []byte("some invalid input from a griefer"),
+			},
+			expectedMsg: &msg.Msg{
+				ConnectionId: connIdOne,
+				Data:         test.NoticeBytes(nostr.NoticeEnvelope("error: failed to parse message and continued failure to parse future messages will result in a ban")),
+				Unparseable:  true,
 			},
 		},
 	}
@@ -168,9 +285,8 @@ func TestIngester(t *testing.T) {
 				}
 				test.CompareEventEnvelope(t, testCase.expectedDbMsg.Data.(*nostr.EventEnvelope), parsedMsg.Data.(*nostr.EventEnvelope))
 				// use the callback to send an error if we want to do this
-				if parsedMsg.Callback != nil && testCase.dbErr != nil {
-					t.Log("using callback...")
-					parsedMsg.Callback(testCase.dbErr)
+				if parsedMsg.Callback != nil && testCase.dbCallbackHandler != nil {
+					testCase.dbCallbackHandler(parsedMsg.Callback)
 				}
 			case <-timeout.C:
 				t.Error("timed out waiting for message on storage channel")
@@ -205,9 +321,7 @@ func TestIngester(t *testing.T) {
 				if testCase.expectedFilterMgrMsg.CloseConn != parsedMsg.CloseConn {
 					t.Errorf("unexpected close connection state from ingester to filter manager message: expected %v, got %v", testCase.expectedFilterMgrMsg.CloseConn, parsedMsg.CloseConn)
 				}
-				if !reflect.DeepEqual(*testCase.expectedFilterMgrMsg, parsedMsg) {
-					t.Errorf("unexpected message from ingester to filter manager: expected %v, got %v", *testCase.expectedFilterMgrMsg, parsedMsg)
-				}
+				test.CompareEnvelope(t, testCase.expectedFilterMgrMsg.Data, parsedMsg.Data)
 			case <-timeout.C:
 				t.Error("timed out waiting for message on filter manager channel")
 			}
