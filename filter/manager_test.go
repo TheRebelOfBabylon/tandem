@@ -996,7 +996,6 @@ var (
 				}
 			},
 		},
-		// Test Sending different types of EVENT
 	}
 	preloadedFiltersforTestFilterMgr = map[string][]*nostr.ReqEnvelope{
 		existingConnId: {
