@@ -1,24 +1,17 @@
 package filter
 
 import (
-	"fmt"
 	"os"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/TheRebelOfBabylon/tandem/config"
 	"github.com/TheRebelOfBabylon/tandem/msg"
 	"github.com/TheRebelOfBabylon/tandem/storage"
+	"github.com/TheRebelOfBabylon/tandem/test"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/rs/zerolog"
-)
-
-var (
-	formatLvlFunc = func(i interface{}) string {
-		return strings.ToUpper(fmt.Sprintf("| %s |", i))
-	}
 )
 
 // initFilterManager initializes the FilterManager
@@ -150,7 +143,7 @@ var (
 // TestConnectionAndSubscriptionMgmt tests that the filter manager behaves as expected when adding new subscrptions and connections as well as ending subscriptions and connections
 func TestConnectionAndSubscriptionMgmt(t *testing.T) {
 	// initialize logger
-	mainLogger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339, FormatLevel: formatLvlFunc, TimeLocation: time.UTC}).With().Timestamp().Logger()
+	mainLogger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339, FormatLevel: test.FormatLvlFunc, TimeLocation: time.UTC}).With().Timestamp().Logger()
 	// initalize and start storage backend
 	toDb := make(chan msg.ParsedMsg)
 	dbConn, err := storage.Connect(config.Storage{Uri: "memory://"}, mainLogger.With().Str("module", "storageBackend").Logger(), toDb)
@@ -1014,7 +1007,7 @@ var (
 // TestFilterManager tests that the filter manager behaves as expected based on different messages received into it's main go routine
 func TestFilterManager(t *testing.T) {
 	// initialize logger
-	mainLogger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339, FormatLevel: formatLvlFunc, TimeLocation: time.UTC}).With().Timestamp().Logger()
+	mainLogger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339, FormatLevel: test.FormatLvlFunc, TimeLocation: time.UTC}).With().Timestamp().Logger()
 	// initalize and start storage backend
 	toDb := make(chan msg.ParsedMsg)
 	dbConn, err := storage.Connect(config.Storage{Uri: "memory://"}, mainLogger.With().Str("module", "storageBackend").Logger(), toDb)

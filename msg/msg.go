@@ -6,6 +6,7 @@ type Msg struct {
 	ConnectionId string
 	Data         []byte
 	CloseConn    bool
+	Unparseable  bool
 }
 
 type ParsedMsg struct {

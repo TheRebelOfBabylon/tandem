@@ -57,6 +57,7 @@ func (i *Ingester) Start() error {
 // TODO - Add a timeout to this goroutine
 func (i *Ingester) ingestWorker(message msg.Msg) {
 	defer i.Done() // TODO - Can this go routine hang on channel send?
+	i.logger.Debug().Str("connectionId", message.ConnectionId).Msg("starting ingest worker...")
 	switch envelope := nostr.ParseMessage(message.Data).(type) {
 	case *nostr.EventEnvelope:
 		i.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("raw event: %v\n", envelope)
@@ -73,50 +74,43 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 			return
 		}
 		// send to db
+		i.logger.Debug().Str("connectionId", message.ConnectionId).Msg("sending message to storage backend...")
 		dbErrChan := make(chan error)
 		i.sendToDB <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope, Callback: func(err error) { dbErrChan <- err }}
 		timer := time.NewTimer(5 * time.Second) // TODO - make this timeout configurable
-	waitForDbLoop:
-		for {
-			select {
-			case err := <-dbErrChan:
-				okMsg := nostr.OKEnvelope{
-					EventID: envelope.ID,
-					OK:      true,
-					Reason:  "",
-				}
-				if err != nil {
-					// send OK error message
-					okMsg.OK = false
-					okMsg.Reason = "error: failed to store event"
-					msgBytes, err := okMsg.MarshalJSON()
-					if err != nil {
-						i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
-					}
-					i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
-					break waitForDbLoop
-				}
-				// send OK message
-				msgBytes, err := okMsg.MarshalJSON()
-				if err != nil {
-					i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
-				}
-				i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
-				// send to filter manager
-				i.sendToFilterMgr <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
-				break waitForDbLoop
-			case <-timer.C:
-				msgBytes, err := nostr.OKEnvelope{
-					EventID: envelope.ID,
-					OK:      false,
-					Reason:  "error: timed out waiting for signal from storag",
-				}.MarshalJSON()
-				if err != nil {
-					i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
-				}
-				i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
-				break waitForDbLoop
+
+		i.logger.Debug().Str("connectionId", message.ConnectionId).Msg("awaiting signal from storage backend...")
+		select {
+		case err := <-dbErrChan:
+			okMsg := nostr.OKEnvelope{
+				EventID: envelope.ID,
+				OK:      true,
+				Reason:  "",
 			}
+			if err != nil {
+				i.logger.Err(err).Str("connectionId", message.ConnectionId).Msg("failed to store event")
+				// send OK error message
+				okMsg.OK = false
+				okMsg.Reason = "error: failed to store event"
+			}
+			// send OK message
+			msgBytes, err := okMsg.MarshalJSON()
+			if err != nil {
+				i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
+			}
+			i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
+			// send to filter manager
+			i.sendToFilterMgr <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
+		case <-timer.C:
+			msgBytes, err := nostr.OKEnvelope{
+				EventID: envelope.ID,
+				OK:      false,
+				Reason:  "error: timed out while waiting for storage",
+			}.MarshalJSON()
+			if err != nil {
+				i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
+			}
+			i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
 		}
 	case *nostr.ReqEnvelope:
 		// enforce subid being 64 characters in length
@@ -140,9 +134,18 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 		// send to filter manager
 		i.sendToFilterMgr <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
 	case nil:
-		// TODO - Should be banning IP addresses that abuse this and/or closing websocket connection
+		msgBytes, err := nostr.OKEnvelope{
+			EventID: "",
+			OK:      false,
+			Reason:  "error: failed to parse message and continued failure to parse future messages will result in a ban",
+		}.MarshalJSON()
+		if err != nil {
+			i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
+		}
+		i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes, Unparseable: true}
 		i.logger.Error().Str("connectionId", message.ConnectionId).Msg("failed to parse message, skipping")
 	}
+	i.logger.Debug().Str("connectionId", message.ConnectionId).Msg("ingest worker routine completed")
 }
 
 // ingest is the goroutine which will receive messages over the recv channel and start up ingest workers

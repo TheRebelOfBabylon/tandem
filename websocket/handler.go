@@ -161,6 +161,9 @@ loop:
 			if !ok {
 				// TODO - handle
 			}
+			if msg.Unparseable {
+				// TODO - Every connectionId should get three strikes, then they're out. We should also track IP addresses and every IP address also gets three strikes. We should also track pubkeys
+			}
 			chans, ok := h.connMgrChans[msg.ConnectionId]
 			if !ok {
 				h.logger.Warn().Msgf("connection manager with id %s not found in receive from ingester routine. Ignoring...", msg.ConnectionId)
