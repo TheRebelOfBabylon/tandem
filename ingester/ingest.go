@@ -88,10 +88,16 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 				Reason:  "",
 			}
 			if err != nil {
-				i.logger.Err(err).Str("connectionId", message.ConnectionId).Msg("failed to store event")
 				// send OK error message
 				okMsg.OK = false
 				okMsg.Reason = "error: failed to store event"
+				// send OK message
+				msgBytes, err := okMsg.MarshalJSON()
+				if err != nil {
+					i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
+				}
+				i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
+				return
 			}
 			// send OK message
 			msgBytes, err := okMsg.MarshalJSON()
@@ -102,10 +108,11 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 			// send to filter manager
 			i.sendToFilterMgr <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
 		case <-timer.C:
+			i.logger.Error().Err(errors.New("timed out waiting for response from storage backend")).Str("connectionId", message.ConnectionId).Msg("failed to store event")
 			msgBytes, err := nostr.OKEnvelope{
 				EventID: envelope.ID,
 				OK:      false,
-				Reason:  "error: timed out while waiting for storage",
+				Reason:  "error: failed to store event",
 			}.MarshalJSON()
 			if err != nil {
 				i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
@@ -118,7 +125,7 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 			i.logger.Error().Err(ErrSubIdTooLarge).Str("connectionId", message.ConnectionId).Msg("rejecting REQ")
 			msgBytes, err := nostr.ClosedEnvelope{
 				SubscriptionID: envelope.SubscriptionID,
-				Reason:         "error: subscription id too large",
+				Reason:         "error: subscription id exceeds 64 character limit",
 			}.MarshalJSON()
 			if err != nil {
 				i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
@@ -134,11 +141,7 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 		// send to filter manager
 		i.sendToFilterMgr <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
 	case nil:
-		msgBytes, err := nostr.OKEnvelope{
-			EventID: "",
-			OK:      false,
-			Reason:  "error: failed to parse message and continued failure to parse future messages will result in a ban",
-		}.MarshalJSON()
+		msgBytes, err := nostr.NoticeEnvelope("error: failed to parse message and continued failure to parse future messages will result in a ban").MarshalJSON()
 		if err != nil {
 			i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
 		}

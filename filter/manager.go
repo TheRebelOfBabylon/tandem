@@ -22,7 +22,7 @@ type FilterManager struct {
 	sendToWSHandler  chan msg.Msg
 	quit             chan struct{}
 	filters          map[string][]*nostr.ReqEnvelope
-	dbConn           storage.StorageBackend
+	dbConn           *storage.StorageBackend
 	logger           zerolog.Logger
 	stopping         bool
 	sync.WaitGroup
@@ -30,7 +30,7 @@ type FilterManager struct {
 }
 
 // NewFilterManager instantiates a new filter manager
-func NewFilterManager(recvFromIngester chan msg.ParsedMsg, dbConn storage.StorageBackend, logger zerolog.Logger) *FilterManager {
+func NewFilterManager(recvFromIngester chan msg.ParsedMsg, dbConn *storage.StorageBackend, logger zerolog.Logger) *FilterManager {
 	return &FilterManager{
 		filters:          make(map[string][]*nostr.ReqEnvelope),
 		recvFromIngester: recvFromIngester,
@@ -83,7 +83,6 @@ func (f *FilterManager) endSubscription(connectionId, subscriptionId string) {
 		newFilters = append(newFilters, filter)
 	}
 	f.filters[connectionId] = newFilters
-	return
 }
 
 // endConnection removes a given connectionId from the map
@@ -168,7 +167,7 @@ loop:
 				// perform db query
 				f.logger.Debug().Msgf("received from ingester: %v", envelope)
 				for _, filter := range envelope.Filters {
-					rcvChan, err := f.dbConn.QueryEvents(context.TODO(), filter)
+					rcvChan, err := f.dbConn.Store.QueryEvents(context.TODO(), filter)
 					if err != nil {
 						f.logger.Error().Err(err).Msg("failed to query database for events")
 						continue

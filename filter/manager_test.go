@@ -15,7 +15,7 @@ import (
 )
 
 // initFilterManager initializes the FilterManager
-func initFilterManager(recvChan chan msg.ParsedMsg, filters map[string][]*nostr.ReqEnvelope, logger zerolog.Logger, dbConn storage.StorageBackend) *FilterManager {
+func initFilterManager(recvChan chan msg.ParsedMsg, filters map[string][]*nostr.ReqEnvelope, logger zerolog.Logger, dbConn *storage.StorageBackend) *FilterManager {
 	return &FilterManager{
 		recvFromIngester: recvChan,
 		sendToWSHandler:  make(chan msg.Msg),
