@@ -20,6 +20,7 @@ var (
 	ErrInvalidStorageUri  = errors.New("invalid storage uri")
 	ErrUnsupportedBackend = errors.New("unsupported storage backend")
 	ErrRecvChanNotSet     = errors.New("receive channel not set")
+	ErrUnsupportedMsgType = errors.New("unsupported message type")
 )
 
 type StorageBackend struct {
@@ -102,6 +103,7 @@ loop:
 				message.Callback(nil)
 			default:
 				b.logger.Warn().Str("connectionId", message.ConnectionId).Msgf("invalid type %T for message, skipping", message.Data)
+				message.Callback(ErrUnsupportedMsgType)
 			}
 		}
 	}
