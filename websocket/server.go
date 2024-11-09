@@ -29,7 +29,7 @@ type WebsocketServer struct {
 func NewWebsocketServer(cfg config.HTTP, logger zerolog.Logger, recvFromIngester, recvFromFilterMgr chan msg.Msg) ConnectionHandler {
 	s := &WebsocketServer{
 		Server: http.Server{
-			Addr: fmt.Sprintf("%s:%v", cfg.Address, cfg.Port),
+			Addr: fmt.Sprintf("%s:%v", cfg.Host, cfg.Port),
 		},
 		logger:            logger,
 		recvFromIngester:  recvFromIngester,

@@ -4,7 +4,7 @@ go 1.22.5
 
 require (
 	github.com/BurntSushi/toml v1.4.0 // indirect
-	github.com/TheRebelOfBabylon/eventstore v0.0.0-20241109193747-8c6b0fcd20cf // indirect
+	github.com/TheRebelOfBabylon/eventstore v0.0.0-20241109210152-2b420a42b153 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2 // indirect
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.0.2 // indirect
 	github.com/certifi/gocertifi v0.0.0-20210507211836-431795d63e8d // indirect
@@ -24,6 +24,7 @@ require (
 	github.com/nbd-wtf/go-nostr v0.34.0 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.0.2 // indirect
 	github.com/rs/zerolog v1.33.0 // indirect
+	github.com/sethvargo/go-envconfig v1.1.0 // indirect
 	github.com/sigurn/crc16 v0.0.0-20211026045750-20ab5afb07e3 // indirect
 	github.com/tidwall/gjson v1.17.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect

@@ -14,16 +14,19 @@ import (
 )
 
 var (
-	edgedbConfig = config.Storage{
-		Uri:           "edgedb://edgedb:Iu9ylST3ITSnSQnpP7p5Xw9p@localhost:10701/main", // TODO - Remove this password. Also command is edgedb instance credentials --inesecure-dsn
-		SkipTlsVerify: true,
+	edgedbConfig = func() config.Storage {
+		cfg, err := config.ReadConfig("../../test.toml")
+		if err != nil {
+			panic(err)
+		}
+		return cfg.Storage
 	}
 )
 
 // TestEdgeDBSaveEvent tests that the edge db storage backend can store events
 func TestEdgeDBSaveEvent(t *testing.T) {
 	// connect to db
-	dbConn, err := ConnectEdgeDB(edgedbConfig)
+	dbConn, err := ConnectEdgeDB(edgedbConfig())
 	if err != nil {
 		t.Fatalf("unexpected error when connection to edge db: %v", err)
 	}
@@ -138,7 +141,7 @@ var (
 // TestEdgeDBQueryEvents tests that the edge db storage backend can query events
 func TestEdgeDBQueryEvents(t *testing.T) {
 	// connect to db
-	dbConn, err := ConnectEdgeDB(edgedbConfig)
+	dbConn, err := ConnectEdgeDB(edgedbConfig())
 	if err != nil {
 		t.Fatalf("unexpected error when connection to edge db: %v", err)
 	}
@@ -215,5 +218,51 @@ func TestEdgeDBQueryEvents(t *testing.T) {
 
 // TestEdgeDBDeleteEvent tests that the edge db storage backend can delete events
 func TestEdgeDBDeleteEvent(t *testing.T) {
-
+	// connect to db
+	dbConn, err := ConnectEdgeDB(edgedbConfig())
+	if err != nil {
+		t.Fatalf("unexpected error when connection to edge db: %v", err)
+	}
+	defer dbConn.Close()
+	// determine number of events we will Save
+	numEvents := test.RandRange(1, 11)
+	// create our events and keep track of their IDs
+	filter := nostr.Filter{}
+	for i := 0; i < numEvents; i++ {
+		randEvent := test.CreateRandomEvent()
+		if err := dbConn.SaveEvent(context.Background(), &randEvent); err != nil {
+			t.Fatalf("unexpected event when saving event %s to edgedb: %v", randEvent.String(), err)
+		}
+		filter.IDs = append(filter.IDs, randEvent.ID)
+	}
+	// delete them
+	for _, id := range filter.IDs {
+		if err := dbConn.DeleteEvent(context.Background(), &nostr.Event{ID: id}); err != nil {
+			t.Errorf("unexpected error when deleting event with id %s from edgedb: %v", id, err)
+		}
+	}
+	// query using our filter
+	recv, err := dbConn.QueryEvents(context.Background(), filter)
+	if err != nil {
+		t.Fatalf("unexpected error when querying for events using filter %s: %v", filter.String(), err)
+	}
+	var count int
+	timeout := time.NewTimer(15 * time.Second)
+recvLoop:
+	for {
+		select {
+		case <-timeout.C:
+			t.Errorf("timed out waiting for events from edgedb")
+			break recvLoop
+		case _, ok := <-recv:
+			if !ok {
+				t.Log("receive events channel closed for test")
+				break recvLoop
+			}
+			count += 1
+		}
+	}
+	if count != 0 {
+		t.Errorf("unexpected number of events returned from storage: expected 0, got %v", count)
+	}
 }

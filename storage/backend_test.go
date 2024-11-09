@@ -3,6 +3,7 @@
 package storage
 
 import (
+	"context"
 	"os"
 	"testing"
 	"time"
@@ -69,7 +70,7 @@ func TestStorageBackend(t *testing.T) {
 	// initialize logger
 	mainLogger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339, FormatLevel: test.FormatLvlFunc, TimeLocation: time.UTC}).With().Timestamp().Logger()
 	sendToStorageChan := make(chan msg.ParsedMsg)
-	db, err := Connect(TestStorageBackendConfig, mainLogger.With().Str("module", "storageBackend").Logger(), sendToStorageChan)
+	db, err := Connect(TestStorageBackendConfig(), mainLogger.With().Str("module", "storageBackend").Logger(), sendToStorageChan)
 	if err != nil {
 		t.Fatalf("unexpected error initializing storage backend: %v", err)
 	}
@@ -77,6 +78,11 @@ func TestStorageBackend(t *testing.T) {
 		t.Fatalf("unexpected error when starting storage backend: %v", err)
 	}
 	defer db.Stop()
+	defer func() {
+		if err := db.Store.DeleteEvent(context.TODO(), &defaultEvent); err != nil {
+			t.Errorf("unexpected error when deleting event from storage: %v", err)
+		}
+	}()
 	// test cases
 	for _, testCase := range storageBackendTestCases {
 		t.Logf("starting test case %s...", testCase.name)

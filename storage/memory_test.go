@@ -4,6 +4,8 @@ package storage
 
 import "github.com/TheRebelOfBabylon/tandem/config"
 
-var TestStorageBackendConfig = config.Storage{
-	Uri: "memory://testing.db",
+var TestStorageBackendConfig = func() config.Storage {
+	return config.Storage{
+		Uri: "memory://testing.db",
+	}
 }

@@ -29,8 +29,8 @@ var validateTestCases = []validateTestCase{
 		name: "ValidCase_DefaultLogLevel",
 		config: &config.Config{
 			HTTP: config.HTTP{
-				Address: "localhost",
-				Port:    5000,
+				Host: "localhost",
+				Port: 5000,
 			},
 		},
 		expectedErr: nil,
@@ -39,13 +39,13 @@ var validateTestCases = []validateTestCase{
 				Level: "info",
 			},
 			HTTP: config.HTTP{
-				Address: "localhost",
-				Port:    5000,
+				Host: "localhost",
+				Port: 5000,
 			},
 		},
 	},
 	{
-		name: "ValidCase_DefaultHTTPAddress",
+		name: "ValidCase_DefaultHTTPHost",
 		config: &config.Config{
 			Log: config.Log{
 				Level: "info",
@@ -60,8 +60,8 @@ var validateTestCases = []validateTestCase{
 				Level: "info",
 			},
 			HTTP: config.HTTP{
-				Address: "localhost",
-				Port:    5000,
+				Host: "localhost",
+				Port: 5000,
 			},
 		},
 	},
@@ -72,7 +72,7 @@ var validateTestCases = []validateTestCase{
 				Level: "info",
 			},
 			HTTP: config.HTTP{
-				Address: "localhost",
+				Host: "localhost",
 			},
 		},
 		expectedErr: nil,
@@ -81,8 +81,8 @@ var validateTestCases = []validateTestCase{
 				Level: "info",
 			},
 			HTTP: config.HTTP{
-				Address: "localhost",
-				Port:    5000,
+				Host: "localhost",
+				Port: 5000,
 			},
 		},
 	},
