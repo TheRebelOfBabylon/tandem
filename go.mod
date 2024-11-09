@@ -4,7 +4,7 @@ go 1.22.5
 
 require (
 	github.com/BurntSushi/toml v1.4.0 // indirect
-	github.com/TheRebelOfBabylon/eventstore v0.0.0-20240727194104-995da894266b // indirect
+	github.com/TheRebelOfBabylon/eventstore v0.0.0-20241109193747-8c6b0fcd20cf // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2 // indirect
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.0.2 // indirect
 	github.com/certifi/gocertifi v0.0.0-20210507211836-431795d63e8d // indirect

@@ -2,9 +2,12 @@ package test
 
 import (
 	"fmt"
+	"math"
+	"math/rand"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nbd-wtf/go-nostr"
 )
@@ -180,4 +183,147 @@ func CompareEventEnvelope(t *testing.T, expected, got *nostr.EventEnvelope) {
 	if !reflect.DeepEqual(expected.Tags, got.Tags) {
 		t.Errorf("unexpected tags in event message: expected %v, got %v", expected.Tags, got.Tags)
 	}
+}
+
+// CreateRandomKeypair generates a random key pair
+func CreateRandomKeypair() (string, string, error) {
+	sk := nostr.GeneratePrivateKey()
+	pk, err := nostr.GetPublicKey(sk)
+	if err != nil {
+		return "", "", err
+	}
+	return sk, pk, nil
+}
+
+// RandRange creates a random number from a given range
+func RandRange(min, max int) int {
+	return rand.Intn(int(math.Max(float64(max-min), 1))) + min
+}
+
+var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:/.%&?#@!")
+
+// randStr creates a random string of length n
+func randStr(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
+}
+
+// CreateRandomTags creates random nostr tags of a given total length and where each tag is up to maxTagLen in length
+func CreateRandomTags(totalLen, maxTagLen int) nostr.Tags {
+	tags := nostr.Tags{}
+	for i := 0; i < totalLen; i++ {
+		tag := nostr.Tag{}
+		randLen := RandRange(2, maxTagLen)
+		for j := 0; j < randLen; j++ {
+			tag = append(tag, randStr(RandRange(j+1, 256)))
+		}
+		tags = append(tags, tag)
+	}
+	return tags
+}
+
+func powInt(x, y int) int {
+	return int(math.Pow(float64(x), float64(y)))
+}
+
+type RandomEventOption func(e *nostr.Event) error
+
+var (
+	// UseGeneratedKeypair overwrites the pubkey field of an event and the sig field of an event by signing the event with the provided keypair
+	UsePreGeneratedKeypair = func(sk, pk string) RandomEventOption {
+		return func(e *nostr.Event) error {
+			e.PubKey = pk
+			return e.Sign(pk)
+		}
+	}
+	// UseKind overwrites the event kind field
+	UseKind = func(kind int) RandomEventOption {
+		return func(e *nostr.Event) error {
+			e.Kind = kind
+			return nil
+		}
+	}
+	// UseKinds ensures the event kind field is set to one of the provided kinds
+	UseKinds = func(kinds []int) RandomEventOption {
+		return func(e *nostr.Event) error {
+			e.Kind = kinds[rand.Intn(len(kinds))]
+			return nil
+		}
+	}
+	// MustBeNewerThan ensures the event created_at field is greater than the provided since time value
+	MustBeNewerThan = func(since nostr.Timestamp) RandomEventOption {
+		return func(e *nostr.Event) error {
+			e.CreatedAt = nostr.Timestamp(since.Time().Add(time.Duration(RandRange(1, powInt(2, 16))) * time.Second).Unix()) // add a random amount of seconds from 0 to 2^16-1
+			return nil
+		}
+	}
+	// MustBeOlderThan ensures the event created_at field is less than the provided until time value
+	MustBeOlderThan = func(until nostr.Timestamp) RandomEventOption {
+		return func(e *nostr.Event) error {
+			e.CreatedAt = nostr.Timestamp(until.Time().Add(time.Duration(-1*RandRange(1, powInt(2, 16))) * time.Second).Unix()) // remove a random amount of seconds from 0 to 2^16-1
+			return nil
+		}
+	}
+	// OverwriteID overwrites the event ID. NOTE: use this option last if providing more than one to ensure it is not overwritten
+	OverwriteID = func(id string) RandomEventOption {
+		return func(e *nostr.Event) error {
+			e.ID = id
+			return nil
+		}
+	}
+	// AppendSuffixToContent appends a suffix to the events content field
+	AppendSuffixToContent = func(suffix string) RandomEventOption {
+		return func(e *nostr.Event) error {
+			e.Content = e.Content + suffix
+			return nil
+		}
+	}
+	// AppendTags appends the contents of a tag map to the events tags field
+	AppendTags = func(tagMap nostr.TagMap) RandomEventOption {
+		return func(e *nostr.Event) error {
+			for letter, values := range tagMap {
+				tag := nostr.Tag{letter}
+				if len(values) <= 1 {
+					tag = append(tag, values...)
+				} else {
+					tag = append(tag, values[int(math.Max(0, float64(RandRange(1, len(values)))))])
+				}
+				e.Tags = append(e.Tags, tag)
+			}
+			return nil
+		}
+	}
+)
+
+// RandomKind creates a random kind within the range of 0 to 2^32-1
+func RandomKind() int {
+	return RandRange(1, powInt(2, 16)) - 1
+}
+
+// CreateRandomEvent creates an event with random pubkey, kind, value, tags, content and created at fields. The ID and signature are generated from the random content
+func CreateRandomEvent(opts ...RandomEventOption) nostr.Event {
+	sk, pk, err := CreateRandomKeypair()
+	if err != nil {
+		panic(err)
+	}
+	event := nostr.Event{
+		PubKey:    pk,
+		CreatedAt: nostr.Timestamp(time.Now().Add(time.Duration(-1*RandRange(1, powInt(2, 30))) * time.Second).Unix()),
+		Kind:      RandomKind(),
+		Tags:      CreateRandomTags(RandRange(1, 32), RandRange(2, 10)),
+		Content:   randStr(RandRange(1, 2048) - 1),
+	}
+	if err := event.Sign(sk); err != nil {
+		panic(err)
+	}
+	// Apply options here since it could override the signature
+	for _, opt := range opts {
+		if err := opt(&event); err != nil {
+			panic(err)
+		}
+	}
+	return event
 }
