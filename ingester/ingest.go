@@ -55,6 +55,7 @@ func (i *Ingester) Start() error {
 
 // ingestWorker is spun up as a go routine to parse, validate and verify new messages
 // TODO - Add a timeout to this goroutine
+// TODO - Need to handle replaceable, addressable and ephemeral events differently
 func (i *Ingester) ingestWorker(message msg.Msg) {
 	defer i.Done() // TODO - Can this go routine hang on channel send?
 	i.logger.Debug().Str("connectionId", message.ConnectionId).Msg("starting ingest worker...")
