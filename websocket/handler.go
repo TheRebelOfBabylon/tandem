@@ -76,7 +76,6 @@ func (m *websocketConnectionManager) read() {
 	}
 }
 
-// TODO - Handle case when connection is dropped
 // write is the go routine responsible for sending messages over the websocket connection from the ingester
 func (m *websocketConnectionManager) write() {
 loop:
@@ -149,7 +148,7 @@ func (h *WebsocketServer) websocketHandler(w http.ResponseWriter, r *http.Reques
 	h.Add(2)
 	go func() {
 		defer h.Done()
-		connManager.read() // TODO - maybe this should return an error and we can check if we aren't shutting down, then remove these channels from the map?
+		connManager.read()
 	}()
 	go func() {
 		defer h.Done()
