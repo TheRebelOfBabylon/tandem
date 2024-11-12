@@ -14,13 +14,14 @@ import (
 
 type WebsocketServer struct {
 	http.Server
-	logger            zerolog.Logger
-	recvFromIngester  chan msg.Msg
-	recvFromFilterMgr chan msg.Msg
-	send              chan msg.Msg
-	quit              chan struct{}
-	connMgrChans      map[string]ConnMgrChannels
-	closing           bool
+	logger                 zerolog.Logger
+	recvFromIngester       chan msg.Msg
+	recvFromFilterMgr      chan msg.Msg
+	send                   chan msg.Msg
+	quit                   chan struct{}
+	connMgrChans           map[string]ConnMgrChannels
+	closing                bool
+	quitSignalFromConnMgrs chan string
 	sync.WaitGroup
 	sync.RWMutex
 }
@@ -31,13 +32,14 @@ func NewWebsocketServer(cfg config.HTTP, logger zerolog.Logger, recvFromIngester
 		Server: http.Server{
 			Addr: fmt.Sprintf("%s:%v", cfg.Host, cfg.Port),
 		},
-		logger:            logger,
-		recvFromIngester:  recvFromIngester,
-		recvFromFilterMgr: recvFromFilterMgr,
-		send:              make(chan msg.Msg),
-		quit:              make(chan struct{}),
-		connMgrChans:      make(map[string]ConnMgrChannels),
-		closing:           false,
+		logger:                 logger,
+		recvFromIngester:       recvFromIngester,
+		recvFromFilterMgr:      recvFromFilterMgr,
+		send:                   make(chan msg.Msg),
+		quit:                   make(chan struct{}),
+		connMgrChans:           make(map[string]ConnMgrChannels),
+		quitSignalFromConnMgrs: make(chan string),
+		closing:                false,
 	}
 	s.Server.Handler = http.HandlerFunc(s.websocketHandler)
 	return s
@@ -87,6 +89,7 @@ func (s *WebsocketServer) Stop() error {
 	}
 	s.Wait()
 	close(s.send)
+	close(s.quitSignalFromConnMgrs)
 	s.logger.Info().Msg("shutdown completed")
 	return nil
 }
