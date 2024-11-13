@@ -189,7 +189,7 @@ loop:
 							f.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("sending to websocket server: %v", event)
 							f.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: eventBytes}
 						case <-timeOut.C:
-							f.logger.Warn().Str("connectionId", message.ConnectionId).Msgf("timeout reading all messages queried for this filter: %s", filter.String())
+							f.logger.Warn().Str("connectionId", message.ConnectionId).Msgf("timeout reading all events queried for this filter: %s", filter.String())
 							break innerLoop
 						}
 					}

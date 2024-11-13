@@ -79,6 +79,7 @@ func main() {
 		logger.Fatal().Err(err).Msg("failed to connect to storage backend")
 	}
 	modules = append(modules, storageBackend)
+	ingest.SetQueryFunc(storageBackend.Store.QueryEvents)
 
 	// initialize filter manager
 	logger.Info().Msg("initializing filter manager...")

@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"time"
@@ -22,6 +23,7 @@ type Ingester struct {
 	sendToDB          chan msg.ParsedMsg
 	sendToFilterMgr   chan msg.ParsedMsg
 	quit              chan struct{}
+	queryFunc         func(context.Context, nostr.Filter) (chan *nostr.Event, error)
 	stopping          bool
 	sync.WaitGroup
 	sync.RWMutex
@@ -44,6 +46,10 @@ func (i *Ingester) SetRecvChannel(recv chan msg.Msg) {
 	i.recvFromWSHandler = recv
 }
 
+func (i *Ingester) SetQueryFunc(queryFunc func(context.Context, nostr.Filter) (chan *nostr.Event, error)) {
+	i.queryFunc = queryFunc
+}
+
 // Start starts the ingest routine
 func (i *Ingester) Start() error {
 	i.logger.Info().Msg("starting up...")
@@ -53,9 +59,86 @@ func (i *Ingester) Start() error {
 	return nil
 }
 
+// handleReplaceableEvent will query storage to see if we have an existing event with combination kind:pubkey or kind:pubkey:dTag and delete it/them if it/they exist
+func (i *Ingester) handleReplaceableEvent(filter nostr.Filter, okMsg nostr.OKEnvelope, connectionId string) {
+	// check storage to see if we already have a combination of kind:pubkey or kind:pubkey:dTag
+	rcvChan, err := i.queryFunc(context.Background(), filter)
+	if err != nil {
+		i.logger.Error().Err(err).Msg("failed to query storage for any existing replaceable events")
+		okMsg.OK = false
+		okMsg.Reason = "error: failed to query storage for any existing replaceable events"
+		// send OK message
+		msgBytes, err := okMsg.MarshalJSON()
+		if err != nil {
+			i.logger.Fatal().Err(err).Str("connectionId", connectionId).Msg("failed to JSON marshal message")
+		}
+		i.sendToWSHandler <- msg.Msg{ConnectionId: connectionId, Data: msgBytes}
+		return
+	}
+	timer := time.NewTimer(5 * time.Second) // TODO - make this timeout configurable
+	events := []*nostr.Event{}
+queryLoop:
+	for {
+		select {
+		case event, ok := <-rcvChan:
+			if !ok || event == nil {
+				break queryLoop
+			}
+			events = append(events, event)
+		case <-timer.C:
+			i.logger.Warn().Str("connectionId", connectionId).Msgf("timeout reading all events queried for this filter: %s", filter.String())
+			okMsg.OK = false
+			okMsg.Reason = "error: timed out while querying storage for any existing replaceable events"
+			// send OK message
+			msgBytes, err := okMsg.MarshalJSON()
+			if err != nil {
+				i.logger.Fatal().Err(err).Str("connectionId", connectionId).Msg("failed to JSON marshal message")
+			}
+			i.sendToWSHandler <- msg.Msg{ConnectionId: connectionId, Data: msgBytes}
+			return
+		}
+	}
+	if len(events) > 0 {
+		// delete all these events
+		for _, event := range events {
+			// send to db
+			i.logger.Debug().Str("connectionId", connectionId).Msg("sending message to storage backend...")
+			dbErrChan := make(chan error)
+			i.sendToDB <- msg.ParsedMsg{ConnectionId: connectionId, Data: &nostr.EventEnvelope{Event: *event}, Callback: func(err error) { dbErrChan <- err }, DeleteEvent: true}
+			timer := time.NewTimer(5 * time.Second) // TODO - make this timeout configurable
+
+			i.logger.Debug().Str("connectionId", connectionId).Msg("awaiting signal from storage backend...")
+			select {
+			case err := <-dbErrChan:
+				if err != nil {
+					// send OK error message
+					okMsg.OK = false
+					okMsg.Reason = "error: failed to delete stale replaceable event"
+					// send OK message
+					msgBytes, err := okMsg.MarshalJSON()
+					if err != nil {
+						i.logger.Fatal().Err(err).Str("connectionId", connectionId).Msg("failed to JSON marshal message")
+					}
+					i.sendToWSHandler <- msg.Msg{ConnectionId: connectionId, Data: msgBytes}
+					return
+				}
+			case <-timer.C:
+				i.logger.Error().Err(errors.New("timed out waiting for response from storage backend")).Str("connectionId", connectionId).Msg("failed to store event")
+				okMsg.OK = false
+				okMsg.Reason = "error: timed out waiting for storage to delete stale replaceable event"
+				msgBytes, err := okMsg.MarshalJSON()
+				if err != nil {
+					i.logger.Fatal().Err(err).Str("connectionId", connectionId).Msg("failed to JSON marshal message")
+				}
+				i.sendToWSHandler <- msg.Msg{ConnectionId: connectionId, Data: msgBytes}
+				return
+			}
+		}
+	}
+}
+
 // ingestWorker is spun up as a go routine to parse, validate and verify new messages
 // TODO - Add a timeout to this goroutine
-// TODO - Need to handle replaceable, addressable and ephemeral events differently
 func (i *Ingester) ingestWorker(message msg.Msg) {
 	defer i.Done() // TODO - Can this go routine hang on channel send?
 	i.logger.Debug().Str("connectionId", message.ConnectionId).Msg("starting ingest worker...")
@@ -74,20 +157,42 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 			i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
 			return
 		}
+		okMsg := nostr.OKEnvelope{
+			EventID: envelope.ID,
+			OK:      true,
+			Reason:  "",
+		}
+		switch {
+		// replaceable
+		case envelope.Kind == 0 || envelope.Kind == 3 || (envelope.Kind >= 10000 && envelope.Kind < 20000):
+			i.handleReplaceableEvent(nostr.Filter{Kinds: []int{envelope.Kind}, Authors: []string{envelope.PubKey}}, okMsg, message.ConnectionId)
+		// ephemeral
+		case (envelope.Kind >= 20000 && envelope.Kind < 30000):
+			// send OK message
+			msgBytes, err := okMsg.MarshalJSON()
+			if err != nil {
+				i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
+			}
+			i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
+			// send to filter manager
+			i.sendToFilterMgr <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
+			return
+		// addressable
+		case (envelope.Kind >= 30000 && envelope.Kind < 40000):
+			// check if the event has a d tag, if so then handle like a parametrized replaceable event
+			if dTag := envelope.Tags.GetD(); dTag != "" {
+				i.handleReplaceableEvent(nostr.Filter{Kinds: []int{envelope.Kind}, Authors: []string{envelope.PubKey}, Tags: nostr.TagMap{"d": []string{dTag}}}, okMsg, message.ConnectionId)
+			}
+		}
 		// send to db
 		i.logger.Debug().Str("connectionId", message.ConnectionId).Msg("sending message to storage backend...")
 		dbErrChan := make(chan error)
 		i.sendToDB <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope, Callback: func(err error) { dbErrChan <- err }}
 		timer := time.NewTimer(5 * time.Second) // TODO - make this timeout configurable
-
+		// wait for signal from storage
 		i.logger.Debug().Str("connectionId", message.ConnectionId).Msg("awaiting signal from storage backend...")
 		select {
 		case err := <-dbErrChan:
-			okMsg := nostr.OKEnvelope{
-				EventID: envelope.ID,
-				OK:      true,
-				Reason:  "",
-			}
 			if err != nil {
 				// send OK error message
 				okMsg.OK = false

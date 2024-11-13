@@ -329,3 +329,5 @@ func TestIngester(t *testing.T) {
 	}
 	t.Log("completed test")
 }
+
+// TODO - Create tests for ephemeral and replaceable events

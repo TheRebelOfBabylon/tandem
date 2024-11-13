@@ -95,6 +95,15 @@ loop:
 			switch envelope := message.Data.(type) {
 			case *nostr.EventEnvelope:
 				b.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("received from ingester: %v", envelope)
+				if message.DeleteEvent {
+					if err := b.Store.DeleteEvent(context.TODO(), &envelope.Event); err != nil {
+						message.Callback(err)
+						b.logger.Error().Str("connectionId", message.ConnectionId).Err(err).Msg("failed to delete event")
+						continue loop
+					}
+					message.Callback(nil)
+					continue loop
+				}
 				if err := b.Store.SaveEvent(context.TODO(), &envelope.Event); err != nil {
 					message.Callback(err)
 					b.logger.Error().Str("connectionId", message.ConnectionId).Err(err).Msg("failed to store event")

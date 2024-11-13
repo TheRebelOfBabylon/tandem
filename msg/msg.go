@@ -14,4 +14,5 @@ type ParsedMsg struct {
 	Data         nostr.Envelope
 	CloseConn    bool
 	Callback     func(error)
+	DeleteEvent  bool
 }
