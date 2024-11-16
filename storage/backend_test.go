@@ -62,6 +62,7 @@ var (
 			},
 			expectedErr: ErrUnsupportedMsgType,
 		},
+		// TODO - add test case for msg with DeleteEvent set to true
 	}
 )
 

@@ -122,11 +122,15 @@ func (f *FilterManager) matchAndSend(event *nostr.EventEnvelope, sendChan chan m
 		f.logger.Warn().Msg("unable to send events, filterManager currently stopping")
 		return
 	}
+	eventBytes, err := event.MarshalJSON()
+	if err != nil {
+		f.logger.Panic().Err(err).Msg("failed to JSON encode event")
+	}
 	for connectionId, filters := range f.filters {
 	innerLoop:
 		for _, filter := range filters {
 			if filter.Match(&event.Event) {
-				sendChan <- msg.Msg{ConnectionId: connectionId, Data: event.Serialize()}
+				sendChan <- msg.Msg{ConnectionId: connectionId, Data: eventBytes}
 				break innerLoop // break as soon as we have a match to not accidentally send the same client the same event multiple times
 			}
 		}

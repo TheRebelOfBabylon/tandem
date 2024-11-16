@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -60,20 +61,11 @@ func (i *Ingester) Start() error {
 }
 
 // handleReplaceableEvent will query storage to see if we have an existing event with combination kind:pubkey or kind:pubkey:dTag and delete it/them if it/they exist
-func (i *Ingester) handleReplaceableEvent(filter nostr.Filter, okMsg nostr.OKEnvelope, connectionId string) {
+func (i *Ingester) handleReplaceableEvent(filter nostr.Filter, connectionId string) error {
 	// check storage to see if we already have a combination of kind:pubkey or kind:pubkey:dTag
 	rcvChan, err := i.queryFunc(context.Background(), filter)
 	if err != nil {
-		i.logger.Error().Err(err).Msg("failed to query storage for any existing replaceable events")
-		okMsg.OK = false
-		okMsg.Reason = "error: failed to query storage for any existing replaceable events"
-		// send OK message
-		msgBytes, err := okMsg.MarshalJSON()
-		if err != nil {
-			i.logger.Fatal().Err(err).Str("connectionId", connectionId).Msg("failed to JSON marshal message")
-		}
-		i.sendToWSHandler <- msg.Msg{ConnectionId: connectionId, Data: msgBytes}
-		return
+		return fmt.Errorf("failed to query storage for any existing replaceable events: %w", err)
 	}
 	timer := time.NewTimer(5 * time.Second) // TODO - make this timeout configurable
 	events := []*nostr.Event{}
@@ -86,16 +78,7 @@ queryLoop:
 			}
 			events = append(events, event)
 		case <-timer.C:
-			i.logger.Warn().Str("connectionId", connectionId).Msgf("timeout reading all events queried for this filter: %s", filter.String())
-			okMsg.OK = false
-			okMsg.Reason = "error: timed out while querying storage for any existing replaceable events"
-			// send OK message
-			msgBytes, err := okMsg.MarshalJSON()
-			if err != nil {
-				i.logger.Fatal().Err(err).Str("connectionId", connectionId).Msg("failed to JSON marshal message")
-			}
-			i.sendToWSHandler <- msg.Msg{ConnectionId: connectionId, Data: msgBytes}
-			return
+			return errors.New("timed out while querying storage for any existing replaceable events")
 		}
 	}
 	if len(events) > 0 {
@@ -111,30 +94,14 @@ queryLoop:
 			select {
 			case err := <-dbErrChan:
 				if err != nil {
-					// send OK error message
-					okMsg.OK = false
-					okMsg.Reason = "error: failed to delete stale replaceable event"
-					// send OK message
-					msgBytes, err := okMsg.MarshalJSON()
-					if err != nil {
-						i.logger.Fatal().Err(err).Str("connectionId", connectionId).Msg("failed to JSON marshal message")
-					}
-					i.sendToWSHandler <- msg.Msg{ConnectionId: connectionId, Data: msgBytes}
-					return
+					return fmt.Errorf("failed to delete stale replaceable events: %w", err)
 				}
 			case <-timer.C:
-				i.logger.Error().Err(errors.New("timed out waiting for response from storage backend")).Str("connectionId", connectionId).Msg("failed to store event")
-				okMsg.OK = false
-				okMsg.Reason = "error: timed out waiting for storage to delete stale replaceable event"
-				msgBytes, err := okMsg.MarshalJSON()
-				if err != nil {
-					i.logger.Fatal().Err(err).Str("connectionId", connectionId).Msg("failed to JSON marshal message")
-				}
-				i.sendToWSHandler <- msg.Msg{ConnectionId: connectionId, Data: msgBytes}
-				return
+				return errors.New("timed out waiting for response from storage backend")
 			}
 		}
 	}
+	return nil
 }
 
 // ingestWorker is spun up as a go routine to parse, validate and verify new messages
@@ -165,7 +132,17 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 		switch {
 		// replaceable
 		case envelope.Kind == 0 || envelope.Kind == 3 || (envelope.Kind >= 10000 && envelope.Kind < 20000):
-			i.handleReplaceableEvent(nostr.Filter{Kinds: []int{envelope.Kind}, Authors: []string{envelope.PubKey}}, okMsg, message.ConnectionId)
+			if err := i.handleReplaceableEvent(nostr.Filter{Kinds: []int{envelope.Kind}, Authors: []string{envelope.PubKey}}, message.ConnectionId); err != nil {
+				i.logger.Error().Err(err).Msg("failed to handle replaceable event")
+				okMsg.OK = false
+				okMsg.Reason = fmt.Sprintf("error: %s", err.Error())
+				msgBytes, err := okMsg.MarshalJSON()
+				if err != nil {
+					i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
+				}
+				i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
+				return
+			}
 		// ephemeral
 		case (envelope.Kind >= 20000 && envelope.Kind < 30000):
 			// send OK message
@@ -181,7 +158,17 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 		case (envelope.Kind >= 30000 && envelope.Kind < 40000):
 			// check if the event has a d tag, if so then handle like a parametrized replaceable event
 			if dTag := envelope.Tags.GetD(); dTag != "" {
-				i.handleReplaceableEvent(nostr.Filter{Kinds: []int{envelope.Kind}, Authors: []string{envelope.PubKey}, Tags: nostr.TagMap{"d": []string{dTag}}}, okMsg, message.ConnectionId)
+				if err := i.handleReplaceableEvent(nostr.Filter{Kinds: []int{envelope.Kind}, Authors: []string{envelope.PubKey}, Tags: nostr.TagMap{"d": []string{dTag}}}, message.ConnectionId); err != nil {
+					i.logger.Error().Err(err).Msg("failed to handle replaceable event")
+					okMsg.OK = false
+					okMsg.Reason = fmt.Sprintf("error: %s", err.Error())
+					msgBytes, err := okMsg.MarshalJSON()
+					if err != nil {
+						i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
+					}
+					i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes}
+					return
+				}
 			}
 		}
 		// send to db
@@ -247,6 +234,7 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 		// send to filter manager
 		i.sendToFilterMgr <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
 	case nil:
+		i.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("raw message: %s", string(message.Data))
 		msgBytes, err := nostr.NoticeEnvelope("error: failed to parse message and continued failure to parse future messages will result in a ban").MarshalJSON()
 		if err != nil {
 			i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")

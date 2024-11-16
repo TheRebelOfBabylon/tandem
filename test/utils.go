@@ -319,9 +319,16 @@ func CreateRandomEvent(opts ...RandomEventOption) nostr.Event {
 	if err := event.Sign(sk); err != nil {
 		panic(err)
 	}
+	oldId := event.ID
 	// Apply options here since it could override the signature
 	for _, opt := range opts {
 		if err := opt(&event); err != nil {
+			panic(err)
+		}
+	}
+	// if we didn't override the ID, then let's resign
+	if event.ID == oldId {
+		if err := event.Sign(sk); err != nil {
 			panic(err)
 		}
 	}

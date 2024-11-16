@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"errors"
 	"os"
 	"reflect"
@@ -283,11 +284,11 @@ func TestIngester(t *testing.T) {
 				if testCase.expectedDbMsg.CloseConn != parsedMsg.CloseConn {
 					t.Errorf("unexpected close connection state from ingester to storage backend message: expected %v, got %v", testCase.expectedDbMsg.CloseConn, parsedMsg.CloseConn)
 				}
-				test.CompareEventEnvelope(t, testCase.expectedDbMsg.Data.(*nostr.EventEnvelope), parsedMsg.Data.(*nostr.EventEnvelope))
 				// use the callback to send an error if we want to do this
 				if parsedMsg.Callback != nil && testCase.dbCallbackHandler != nil {
 					testCase.dbCallbackHandler(parsedMsg.Callback)
 				}
+				test.CompareEventEnvelope(t, testCase.expectedDbMsg.Data.(*nostr.EventEnvelope), parsedMsg.Data.(*nostr.EventEnvelope))
 			case <-timeout.C:
 				t.Error("timed out waiting for message on storage channel")
 			}
@@ -330,4 +331,351 @@ func TestIngester(t *testing.T) {
 	t.Log("completed test")
 }
 
-// TODO - Create tests for ephemeral and replaceable events
+type ingesterReplaceableEventTestCase struct {
+	name                 string
+	inputEventKind       int
+	inputDTag            string
+	connId               string
+	expectedOkMsg        *nostr.OKEnvelope
+	expectedDbMsgs       []msg.ParsedMsg
+	dbCallbackHandlers   []func(callback func(err error))
+	expectedFilterMgrMsg *msg.ParsedMsg
+	queryFunc            func(context.Context, nostr.Filter) (chan *nostr.Event, error)
+}
+
+var ingesterReplaceableEventsTestCases = []ingesterReplaceableEventTestCase{
+	{
+		name:           "ValidCase_Event_RepleaceableEvent",
+		inputEventKind: 14567,
+		connId:         connIdOne,
+		expectedOkMsg: &nostr.OKEnvelope{
+			OK: true,
+		},
+		expectedDbMsgs: []msg.ParsedMsg{
+			{
+				ConnectionId: connIdOne,
+			},
+		},
+		dbCallbackHandlers: []func(callback func(err error)){
+			func(callback func(err error)) {
+				callback(nil)
+			},
+		},
+		expectedFilterMgrMsg: &msg.ParsedMsg{
+			ConnectionId: connIdOne,
+		},
+		queryFunc: func(ctx context.Context, f nostr.Filter) (chan *nostr.Event, error) {
+			queryChan := make(chan *nostr.Event)
+			go func() {
+				close(queryChan)
+			}()
+			return queryChan, nil
+		},
+	},
+	{
+		name:           "ErrorCase_Event_RepleaceableEvent_QueryFuncError",
+		connId:         connIdOne,
+		inputEventKind: 14567,
+		expectedOkMsg: &nostr.OKEnvelope{
+			OK:     false,
+			Reason: "error: failed to query storage for any existing replaceable events: rrrr matey this be an error",
+		},
+		queryFunc: func(ctx context.Context, f nostr.Filter) (chan *nostr.Event, error) {
+			return nil, errors.New("rrrr matey this be an error")
+		},
+	},
+	{
+		name:           "ErrorCase_Event_RepleaceableEvent_DeleteOldEventError",
+		connId:         connIdOne,
+		inputEventKind: 14567,
+		expectedDbMsgs: []msg.ParsedMsg{
+			{
+				ConnectionId: connIdOne,
+				DeleteEvent:  true,
+			},
+		},
+		dbCallbackHandlers: []func(callback func(err error)){
+			func(callback func(err error)) {
+				callback(errors.New("rrrr matey this be an error"))
+			},
+		},
+		expectedOkMsg: &nostr.OKEnvelope{
+			OK:     false,
+			Reason: "error: failed to delete stale replaceable events: rrrr matey this be an error",
+		},
+		queryFunc: func(ctx context.Context, f nostr.Filter) (chan *nostr.Event, error) {
+			queryChan := make(chan *nostr.Event)
+			go func() {
+				queryChan <- &nostr.Event{ID: "abc123", Kind: 14567}
+				close(queryChan)
+			}()
+			return queryChan, nil
+		},
+	},
+	{
+		name:           "ValidCase_Event_RepleaceableEvent_DeleteOldEvent",
+		connId:         connIdOne,
+		inputEventKind: 14567,
+		expectedDbMsgs: []msg.ParsedMsg{
+			{
+				ConnectionId: connIdOne,
+				DeleteEvent:  true,
+			},
+			{
+				ConnectionId: connIdOne,
+			},
+		},
+		dbCallbackHandlers: []func(callback func(err error)){
+			func(callback func(err error)) {
+				callback(nil)
+			},
+			func(callback func(err error)) {
+				callback(nil)
+			},
+		},
+		expectedOkMsg: &nostr.OKEnvelope{
+			OK: true,
+		},
+		queryFunc: func(ctx context.Context, f nostr.Filter) (chan *nostr.Event, error) {
+			queryChan := make(chan *nostr.Event)
+			go func() {
+				queryChan <- &nostr.Event{ID: "abc123", Kind: 14567}
+				close(queryChan)
+			}()
+			return queryChan, nil
+		},
+		expectedFilterMgrMsg: &msg.ParsedMsg{
+			ConnectionId: connIdOne,
+		},
+	},
+	{
+		name:           "ValidCase_Event_ParametrizedRepleaceableEvent",
+		inputEventKind: 34567,
+		inputDTag:      "hello",
+		connId:         connIdOne,
+		expectedOkMsg: &nostr.OKEnvelope{
+			OK: true,
+		},
+		expectedDbMsgs: []msg.ParsedMsg{
+			{
+				ConnectionId: connIdOne,
+			},
+		},
+		dbCallbackHandlers: []func(callback func(err error)){
+			func(callback func(err error)) {
+				callback(nil)
+			},
+		},
+		expectedFilterMgrMsg: &msg.ParsedMsg{
+			ConnectionId: connIdOne,
+		},
+		queryFunc: func(ctx context.Context, f nostr.Filter) (chan *nostr.Event, error) {
+			queryChan := make(chan *nostr.Event)
+			go func() {
+				close(queryChan)
+			}()
+			return queryChan, nil
+		},
+	},
+	{
+		name:           "ErrorCase_Event_ParametrizedRepleaceableEvent_QueryFuncError",
+		connId:         connIdOne,
+		inputEventKind: 34567,
+		inputDTag:      "hello",
+		expectedOkMsg: &nostr.OKEnvelope{
+			OK:     false,
+			Reason: "error: failed to query storage for any existing replaceable events: rrrr matey this be an error",
+		},
+		queryFunc: func(ctx context.Context, f nostr.Filter) (chan *nostr.Event, error) {
+			return nil, errors.New("rrrr matey this be an error")
+		},
+	},
+	{
+		name:           "ErrorCase_Event_ParametrizedRepleaceableEvent_DeleteOldEventError",
+		connId:         connIdOne,
+		inputEventKind: 34567,
+		inputDTag:      "hello",
+		expectedDbMsgs: []msg.ParsedMsg{
+			{
+				ConnectionId: connIdOne,
+				DeleteEvent:  true,
+			},
+		},
+		dbCallbackHandlers: []func(callback func(err error)){
+			func(callback func(err error)) {
+				callback(errors.New("rrrr matey this be an error"))
+			},
+		},
+		expectedOkMsg: &nostr.OKEnvelope{
+			OK:     false,
+			Reason: "error: failed to delete stale replaceable events: rrrr matey this be an error",
+		},
+		queryFunc: func(ctx context.Context, f nostr.Filter) (chan *nostr.Event, error) {
+			queryChan := make(chan *nostr.Event)
+			go func() {
+				queryChan <- &nostr.Event{ID: "abc123", Kind: 34567, Tags: nostr.Tags{{"d", "hello"}}}
+				close(queryChan)
+			}()
+			return queryChan, nil
+		},
+	},
+	{
+		name:           "ValidCase_Event_ParametrizedRepleaceableEvent_DeleteOldEvent",
+		connId:         connIdOne,
+		inputEventKind: 34567,
+		inputDTag:      "hello",
+		expectedDbMsgs: []msg.ParsedMsg{
+			{
+				ConnectionId: connIdOne,
+				DeleteEvent:  true,
+			},
+			{
+				ConnectionId: connIdOne,
+			},
+		},
+		dbCallbackHandlers: []func(callback func(err error)){
+			func(callback func(err error)) {
+				callback(nil)
+			},
+			func(callback func(err error)) {
+				callback(nil)
+			},
+		},
+		expectedOkMsg: &nostr.OKEnvelope{
+			OK: true,
+		},
+		queryFunc: func(ctx context.Context, f nostr.Filter) (chan *nostr.Event, error) {
+			queryChan := make(chan *nostr.Event)
+			go func() {
+				queryChan <- &nostr.Event{ID: "abc123", Kind: 34567, Tags: nostr.Tags{{"d", "hello"}}}
+				close(queryChan)
+			}()
+			return queryChan, nil
+		},
+		expectedFilterMgrMsg: &msg.ParsedMsg{
+			ConnectionId: connIdOne,
+		},
+	},
+	{
+		name:           "ValidCase_EphemeralEvent",
+		connId:         connIdOne,
+		inputEventKind: 23456,
+		expectedOkMsg: &nostr.OKEnvelope{
+			OK: true,
+		},
+		queryFunc: func(ctx context.Context, f nostr.Filter) (chan *nostr.Event, error) {
+			return nil, nil
+		},
+		expectedFilterMgrMsg: &msg.ParsedMsg{
+			ConnectionId: connIdOne,
+		},
+	},
+}
+
+// TestIngesterReplaceableEvents ensures the ingester handles ephemeral and replaceable events as expected
+func TestIngesterReplaceableEvents(t *testing.T) {
+	// initialize logger
+	mainLogger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339, FormatLevel: test.FormatLvlFunc, TimeLocation: time.UTC}).With().Timestamp().Logger()
+	// initialize ingester
+	ingester := NewIngester(mainLogger.With().Str("module", "ingester").Logger())
+	if err := ingester.Start(); err != nil {
+		t.Fatalf("unexpected error when starting ingester: %v", err)
+	}
+	defer ingester.Stop()
+	// set the recv channel
+	fromWSChan := make(chan msg.Msg)
+	defer close(fromWSChan)
+	ingester.SetRecvChannel(fromWSChan)
+	// grab the channels
+	dbChan := ingester.SendToDBChannel()
+	filterMgrChan := ingester.SendToFilterManager()
+	wsChan := ingester.SendToWSHandlerChannel()
+	// test cases
+	for _, testCase := range ingesterReplaceableEventsTestCases {
+		t.Logf("starting test case %s...", testCase.name)
+		// set the query func
+		ingester.SetQueryFunc(testCase.queryFunc)
+		// create the event
+		event := &nostr.EventEnvelope{Event: test.CreateRandomEvent(test.UseKind(testCase.inputEventKind), test.AppendTags(nostr.TagMap{"d": []string{testCase.inputDTag}}))}
+		eventBytes, err := event.MarshalJSON()
+		if err != nil {
+			t.Fatalf("failed to JSON encode event: %v", err)
+		}
+		// send the input message
+		fromWSChan <- msg.Msg{ConnectionId: testCase.connId, Data: eventBytes}
+		// wait for expected messages
+		if testCase.expectedDbMsgs != nil {
+			t.Log("waiting for messages on storage backend channel...")
+			for i, expectedDbMsg := range testCase.expectedDbMsgs {
+				timeout := time.NewTimer(15 * time.Second)
+				select {
+				case parsedMsg, ok := <-dbChan:
+					if !ok {
+						t.Error("storage channel unexpectedely closed")
+					}
+					if testCase.connId != parsedMsg.ConnectionId {
+						t.Errorf("unexpected connection ID in message from ingester to storage backend: expected %s, got %s", expectedDbMsg.ConnectionId, parsedMsg.ConnectionId)
+					}
+					if expectedDbMsg.CloseConn != parsedMsg.CloseConn {
+						t.Errorf("unexpected close connection state from ingester to storage backend message: expected %v, got %v", expectedDbMsg.CloseConn, parsedMsg.CloseConn)
+					}
+					if expectedDbMsg.DeleteEvent != parsedMsg.DeleteEvent {
+						t.Errorf("unexpected delete event state from ingester to storage backend message: expected %v, got %v", expectedDbMsg.DeleteEvent, parsedMsg.DeleteEvent)
+					}
+					// use the callback to send an error if we want to do this
+					if parsedMsg.Callback != nil && testCase.dbCallbackHandlers != nil {
+						testCase.dbCallbackHandlers[i](parsedMsg.Callback)
+					}
+					if !parsedMsg.DeleteEvent {
+						test.CompareEventEnvelope(t, event, parsedMsg.Data.(*nostr.EventEnvelope))
+					}
+				case <-timeout.C:
+					t.Error("timed out waiting for message on storage channel")
+
+				}
+			}
+		}
+		if testCase.expectedOkMsg != nil {
+			t.Log("waiting for message on websocket channel...")
+			timeout := time.NewTimer(15 * time.Second)
+			select {
+			case message, ok := <-wsChan:
+				if !ok {
+					t.Error("websocket channel unexpectedely closed")
+				}
+				testCase.expectedOkMsg.EventID = event.ID
+				okBytes, err := testCase.expectedOkMsg.MarshalJSON()
+				if err != nil {
+					t.Fatalf("unexpected message when JSON marshalling OK message: %v", err)
+				}
+				expectedMsg := msg.Msg{ConnectionId: testCase.connId, Data: okBytes}
+				if !reflect.DeepEqual(expectedMsg, message) {
+					t.Errorf("unexpected message from ingester to websocket manager: expected %v, got %v", expectedMsg, message)
+					t.Logf("expected %s, got %s", string(expectedMsg.Data), string(message.Data))
+				}
+			case <-timeout.C:
+				t.Error("timed out waiting for message on websocket channel")
+			}
+		}
+		if testCase.expectedFilterMgrMsg != nil {
+			t.Log("waiting for message on filter manager channel...")
+			timeout := time.NewTimer(15 * time.Second)
+			select {
+			case parsedMsg, ok := <-filterMgrChan:
+				if !ok {
+					t.Error("filter manager channel unexpectedely closed")
+				}
+				if testCase.expectedFilterMgrMsg.ConnectionId != parsedMsg.ConnectionId {
+					t.Errorf("unexpected connection id from ingester to filter manager message: expected %s, got %s", testCase.expectedFilterMgrMsg.ConnectionId, parsedMsg.ConnectionId)
+				}
+				if testCase.expectedFilterMgrMsg.CloseConn != parsedMsg.CloseConn {
+					t.Errorf("unexpected close connection state from ingester to filter manager message: expected %v, got %v", testCase.expectedFilterMgrMsg.CloseConn, parsedMsg.CloseConn)
+				}
+				test.CompareEnvelope(t, event, parsedMsg.Data)
+			case <-timeout.C:
+				t.Error("timed out waiting for message on filter manager channel")
+			}
+		}
+	}
+	t.Log("completed test")
+}
