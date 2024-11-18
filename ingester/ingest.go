@@ -231,6 +231,15 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 		i.sendToFilterMgr <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
 	case *nostr.CloseEnvelope:
 		i.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("raw close: %v\n", envelope)
+		if err := envelope.UnmarshalJSON(message.Data); err != nil {
+			msgBytes, err := nostr.NoticeEnvelope("error: failed to parse message and continued failure to parse future messages will result in a ban").MarshalJSON()
+			if err != nil {
+				i.logger.Fatal().Err(err).Str("connectionId", message.ConnectionId).Msg("failed to JSON marshal message")
+			}
+			i.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: msgBytes, Unparseable: true}
+			i.logger.Error().Str("connectionId", message.ConnectionId).Msg("failed to parse message, skipping")
+			return
+		}
 		// send to filter manager
 		i.sendToFilterMgr <- msg.ParsedMsg{ConnectionId: message.ConnectionId, Data: envelope}
 	case nil:

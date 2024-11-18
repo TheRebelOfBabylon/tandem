@@ -204,9 +204,12 @@ loop:
 				f.addSubscription(message.ConnectionId, envelope)
 				f.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("new subscription with id %v registered", envelope.SubscriptionID)
 			case *nostr.CloseEnvelope:
-				if f.contains(message.ConnectionId, string(*envelope)) {
+				if envelope != nil && f.contains(message.ConnectionId, string(*envelope)) {
+					f.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("attemtping to close subscription with id %s...", string(*envelope))
 					// remove it from our map
 					f.endSubscription(message.ConnectionId, string(*envelope))
+					f.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: []byte(fmt.Sprintf(`["CLOSED", "%s", ""]`, string(*envelope)))}
+					f.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("subscription with id %s successfully closed", string(*envelope))
 				}
 			default:
 				f.logger.Fatal().Msgf("unexpected type received from ingester: %T", envelope)

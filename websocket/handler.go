@@ -103,6 +103,7 @@ loop:
 				m.quitSignalToServer <- m.id // if you quit without being told, you must notify
 				return
 			}
+			m.logger.Debug().Msg("message sent to client successfully")
 		case <-m.quit: // if you are told to quit, no need to notify that you quit
 			m.logger.Info().Msg("exiting write routine...")
 			if err := m.conn.Close(); err != nil {
