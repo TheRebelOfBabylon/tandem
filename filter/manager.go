@@ -170,7 +170,12 @@ loop:
 			case *nostr.ReqEnvelope:
 				// perform db query
 				f.logger.Debug().Msgf("received from ingester: %v", envelope)
+			filterLoop:
 				for _, filter := range envelope.Filters {
+					// skip querying for stored events if limit is 0
+					if filter.LimitZero {
+						continue filterLoop
+					}
 					rcvChan, err := f.dbConn.Store.QueryEvents(context.TODO(), filter)
 					if err != nil {
 						f.logger.Error().Err(err).Msg("failed to query database for events")
@@ -208,7 +213,7 @@ loop:
 					f.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("attemtping to close subscription with id %s...", string(*envelope))
 					// remove it from our map
 					f.endSubscription(message.ConnectionId, string(*envelope))
-					f.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: []byte(fmt.Sprintf(`["CLOSED", "%s", ""]`, string(*envelope)))}
+					// f.sendToWSHandler <- msg.Msg{ConnectionId: message.ConnectionId, Data: []byte(fmt.Sprintf(`["CLOSED", "%s", ""]`, string(*envelope)))}
 					f.logger.Debug().Str("connectionId", message.ConnectionId).Msgf("subscription with id %s successfully closed", string(*envelope))
 				}
 			default:

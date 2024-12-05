@@ -61,7 +61,7 @@ func (i *Ingester) Start() error {
 }
 
 // handleReplaceableEvent will query storage to see if we have an existing event with combination kind:pubkey or kind:pubkey:dTag and delete it/them if it/they exist
-func (i *Ingester) handleReplaceableEvent(filter nostr.Filter, connectionId string) error {
+func (i *Ingester) handleReplaceableEvent(newEvent nostr.Event, filter nostr.Filter, connectionId string) error {
 	// check storage to see if we already have a combination of kind:pubkey or kind:pubkey:dTag
 	rcvChan, err := i.queryFunc(context.Background(), filter)
 	if err != nil {
@@ -84,6 +84,10 @@ queryLoop:
 	if len(events) > 0 {
 		// delete all these events
 		for _, event := range events {
+			// if the stored event is newer than the received event, we keep the latest one
+			if event.CreatedAt.Time().After(newEvent.CreatedAt.Time()) {
+				return errors.New("replaceable event is older than already stored replaceable event")
+			}
 			// send to db
 			i.logger.Debug().Str("connectionId", connectionId).Msg("sending message to storage backend...")
 			dbErrChan := make(chan error)
@@ -132,7 +136,7 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 		switch {
 		// replaceable
 		case envelope.Kind == 0 || envelope.Kind == 3 || (envelope.Kind >= 10000 && envelope.Kind < 20000):
-			if err := i.handleReplaceableEvent(nostr.Filter{Kinds: []int{envelope.Kind}, Authors: []string{envelope.PubKey}}, message.ConnectionId); err != nil {
+			if err := i.handleReplaceableEvent(envelope.Event, nostr.Filter{Kinds: []int{envelope.Kind}, Authors: []string{envelope.PubKey}}, message.ConnectionId); err != nil {
 				i.logger.Error().Err(err).Msg("failed to handle replaceable event")
 				okMsg.OK = false
 				okMsg.Reason = fmt.Sprintf("error: %s", err.Error())
@@ -158,7 +162,7 @@ func (i *Ingester) ingestWorker(message msg.Msg) {
 		case (envelope.Kind >= 30000 && envelope.Kind < 40000):
 			// check if the event has a d tag, if so then handle like a parametrized replaceable event
 			if dTag := envelope.Tags.GetD(); dTag != "" {
-				if err := i.handleReplaceableEvent(nostr.Filter{Kinds: []int{envelope.Kind}, Authors: []string{envelope.PubKey}, Tags: nostr.TagMap{"d": []string{dTag}}}, message.ConnectionId); err != nil {
+				if err := i.handleReplaceableEvent(envelope.Event, nostr.Filter{Kinds: []int{envelope.Kind}, Authors: []string{envelope.PubKey}, Tags: nostr.TagMap{"d": []string{dTag}}}, message.ConnectionId); err != nil {
 					i.logger.Error().Err(err).Msg("failed to handle replaceable event")
 					okMsg.OK = false
 					okMsg.Reason = fmt.Sprintf("error: %s", err.Error())

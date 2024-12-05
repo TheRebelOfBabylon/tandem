@@ -6,7 +6,7 @@ toolchain go1.23.3
 
 require (
 	github.com/BurntSushi/toml v1.4.0
-	github.com/TheRebelOfBabylon/eventstore v0.0.0-20241109210152-2b420a42b153
+	github.com/TheRebelOfBabylon/eventstore v0.0.0-20241125022806-e7dc2727b133
 	github.com/fiatjaf/eventstore v0.13.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
