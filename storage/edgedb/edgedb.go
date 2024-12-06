@@ -3,8 +3,8 @@ package edgedb
 import (
 	"errors"
 
-	"github.com/TheRebelOfBabylon/eventstore/edgedb"
 	"github.com/TheRebelOfBabylon/tandem/config"
+	"github.com/fiatjaf/eventstore/edgedb"
 )
 
 var (

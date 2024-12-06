@@ -1,8 +1,8 @@
 package memory
 
 import (
-	"github.com/TheRebelOfBabylon/eventstore/slicestore"
 	"github.com/TheRebelOfBabylon/tandem/config"
+	"github.com/fiatjaf/eventstore/slicestore"
 )
 
 // ConnectToMemory instantiates the Memory storage
