@@ -4,22 +4,22 @@ Nostr relay, written in Go.
 # NIP Compliance
 - [x] NIP-01
 - [x] NIP-02: Follow List
-- [] NIP-05: Mapping Nostr keys to DNS-based Internet Identifiers
-- [] NIP-09: Event Deletion Request
-- [] NIP-11: Relay Information Document
-- [] NIP-13: Proof of Work
-- [] NIP-17: Private Direct Messages
-- [] NIP-29: Relay-based Groups
-- [] NIP-40: Expiration Timestamp
-- [] NIP-42: Authentication of clients to relays
-- [] NIP-45: Event Counts
+- [ ] NIP-05: Mapping Nostr keys to DNS-based Internet Identifiers
+- [ ] NIP-09: Event Deletion Request
+- [ ] NIP-11: Relay Information Document
+- [ ] NIP-13: Proof of Work
+- [ ] NIP-17: Private Direct Messages
+- [ ] NIP-29: Relay-based Groups
+- [ ] NIP-40: Expiration Timestamp
+- [ ] NIP-42: Authentication of clients to relays
+- [ ] NIP-45: Event Counts
 - [x] NIP-50: Search Capability*
-- [] NIP-56: Reporting
-- [] NIP-64: Chess (Portable Game Notation)
+- [ ] NIP-56: Reporting
+- [ ] NIP-64: Chess (Portable Game Notation)
 - [x] NIP-65: Relay List Metadata**
-- [] NIP-70: Protected Events
-- [] NIP-86: Relay Management API
-- [] NIP-96: HTTP File Storage Integration
+- [ ] NIP-70: Protected Events
+- [ ] NIP-86: Relay Management API
+- [ ] NIP-96: HTTP File Storage Integration
 
 * = Search is not ordered by quality or treated differently for kind. Applies only to content field and no special syntax is used (not even * for wildcard)
 ** = tandem does not currently disallow any users from submitting lists
@@ -32,7 +32,7 @@ Nostr relay, written in Go.
 
 # Roadmap
 
-- [] Define a roadmap
+- [ ] Define a roadmap
 
 # Usage
 
