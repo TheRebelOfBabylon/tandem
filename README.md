@@ -21,7 +21,7 @@ Nostr relay, written in Go.
 - [ ] NIP-86: Relay Management API
 - [ ] NIP-96: HTTP File Storage Integration
 
-* = Search is not ordered by quality or treated differently for kind. Applies only to content field and no special syntax is used (not even * for wildcard)
+\* = Search is not ordered by quality or treated differently for kind. Applies only to content field and no special syntax is used (not even * for wildcard)
 
 ** = tandem does not currently disallow any users from submitting lists
 
