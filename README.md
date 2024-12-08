@@ -21,7 +21,7 @@ Nostr relay, written in Go.
 - [ ] NIP-86: Relay Management API
 - [ ] NIP-96: HTTP File Storage Integration
 
-\* = Search is not ordered by quality or treated differently for kind. Applies only to content field and no special syntax is used (not even * for wildcard)
+\* = Search is not ordered by quality or treated differently for each kind. Applies only to content field and no special syntax is used (not even * for wildcard)
 
 ** = tandem does not currently disallow any users from submitting lists
 
@@ -29,7 +29,7 @@ Nostr relay, written in Go.
 
 - Easy to deploy: anyone's Uncle Jim with any sliver of IT knowledge should be able to deploy a relay.
 - Easy to moderate: blocking IPs, whitelisting pubkeys, setting up specific moderation rules, all should be achievable without code knowledge.
-- Community driven: nostr's main usecase is as a global townsquare but it can also be used to create small communities. Tandem's main goal is to serve the latter usecase. 
+- Community driven: nostr's main usecase is as a global townsquare but it can also be used to create small communities. tandem's main goal is to serve the latter usecase. 
 
 # Roadmap
 
